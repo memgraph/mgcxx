@@ -3,10 +3,13 @@
 #include "rust.hpp"
 
 int main() {
-  text_search::TextInput text = {.data = "data"};
-  auto is_added = cxxtantivy::add(text);
-  text_search::SearchInput search = {.query = "query"};
-  auto result = cxxtantivy::search(search);
-  std::cout << "  DummyDocID: " << result.docId << std::endl;
+  auto context = cxxtantivy::init();
+  text_search::TextInput text = {.data = "{key:value}"};
+  auto is_added = cxxtantivy::add(context, text);
+  text_search::SearchInput search = {.query = "value"};
+  auto result = cxxtantivy::search(context, search);
+  for (const auto &docId : result.doc_ids) {
+    std::cout << "  FoundDocID: " << docId << std::endl;
+  }
   return 0;
 }
