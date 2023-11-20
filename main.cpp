@@ -1,7 +1,12 @@
+#include <iostream>
+
 #include "rust.hpp"
 
 int main() {
-  shared::Dummy data = {.a = 7};
-  dummy::print_dummy(data);
+  text_search::TextInput text = {.data = "data"};
+  auto is_added = cxxtantivy::add(text);
+  text_search::SearchInput search = {.query = "query"};
+  auto result = cxxtantivy::search(search);
+  std::cout << "  DummyDocID: " << result.docId << std::endl;
   return 0;
 }

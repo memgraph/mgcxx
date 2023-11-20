@@ -1,17 +1,40 @@
 #[cxx::bridge]
 mod ffi {
-    #[namespace = "shared"]
-    struct Dummy {
-        a: u8,
+    #[namespace = "text_search"]
+    struct TextInput {
+        data: String,
+    }
+    #[namespace = "text_search"]
+    struct Context {
+        tantivyContext: Box<TantivyContext>,
+    }
+    #[namespace = "text_search"]
+    struct SearchInput {
+        query: String,
+    }
+    #[namespace = "text_search"]
+    struct SearchOutput {
+        docId: u64,
     }
 
-    #[namespace = "dummy"]
+    #[namespace = "cxxtantivy"]
     extern "Rust" {
-        fn print_dummy(data: &Dummy);
+        type TantivyContext;
+        fn add(input: &TextInput) -> bool;
+        fn search(input: &SearchInput) -> SearchOutput;
     }
 }
 
-fn print_dummy(data: &ffi::Dummy) {
-    println!("printing data");
-    println!("{}", data.a);
+#[derive(Debug)]
+pub struct TantivyContext {
+}
+
+fn add(input: &ffi::TextInput) -> bool {
+    println!("ADDING: {}", input.data);
+    true
+}
+
+fn search(input: &ffi::SearchInput) -> ffi::SearchOutput {
+    println!("SEARCHING: query => {}", input.query);
+    ffi::SearchOutput { docId: 7 }
 }
