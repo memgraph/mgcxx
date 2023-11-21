@@ -1,5 +1,6 @@
 use std::io::{Error, ErrorKind};
 use tantivy::collector::TopDocs;
+use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
@@ -101,21 +102,37 @@ fn search(
 }
 
 fn init() -> Result<ffi::Context, std::io::Error> {
-    // TODO(gitbuda): Manage text search index folder creation (create folder).
-    let index_path = std::path::Path::new("tantivy");
     let mut schema_builder = Schema::builder();
     schema_builder.add_text_field("props", TEXT | STORED);
     let schema = schema_builder.build();
-    // TODO(gitbuda): Skip index creation in case folder is alredy there.
-    let index = match Index::create_in_dir(&index_path, schema.clone()) {
+
+    let index_path = std::path::Path::new("tantivy_index");
+    if !index_path.exists() {
+        match std::fs::create_dir(index_path) {
+            Ok(_) => {
+                println!("tantivy_index folder created");
+            }
+            Err(_) => {
+                panic!("Failed to create tantivy_index folder");
+            }
+        }
+    }
+
+    let mmap_directory = MmapDirectory::open(&index_path).unwrap();
+    let index = match Index::open_or_create(mmap_directory, schema.clone()) {
         Ok(index) => index,
         Err(e) => {
             return Err(Error::new(
                 ErrorKind::Other,
-                format!("Unable to initialize index: {}", e),
+                format!("Unable to initialize index -> {}", e),
             ));
         }
     };
+    // NOTE: The following assert is not needed because if the schema is wrong
+    // Index::open_or_create is going to fail.
+    // assert!(index.schema() == schema, "Schema loaded from tantivy_index does NOT match.");
+    // TODO(gitbuda): Implement text search backward compatiblity because of possible schema changes.
+
     let index_writer: IndexWriter = match index.writer(50_000_000) {
         Ok(writer) => writer,
         Err(_e) => {
