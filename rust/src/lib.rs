@@ -5,6 +5,7 @@ use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
 
+// NOTE: Result<T> == Result<T,std::io::Error>.
 #[cxx::bridge]
 mod ffi {
     #[namespace = "text_search"]
@@ -24,11 +25,12 @@ mod ffi {
         doc_ids: Vec<u64>,
     }
 
+    // NOTE: Since return type is Result<T>, always return Result<Something>.
     #[namespace = "cxxtantivy"]
     extern "Rust" {
         type TantivyContext;
         fn init() -> Result<Context>;
-        fn add(context: &mut Context, input: &TextInput) -> bool;
+        fn add(context: &mut Context, input: &TextInput) -> Result<()>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
     }
 }
@@ -39,31 +41,40 @@ pub struct TantivyContext {
     pub index_writer: IndexWriter,
 }
 
-fn add(context: &mut ffi::Context, input: &ffi::TextInput) -> bool {
-    let props = context.tantivyContext.schema.get_field("props").unwrap();
-    match context
-        .tantivyContext
-        .index_writer
-        .add_document(doc!(props => input.data.clone()))
-    {
-        Ok(_) => {
-            // pass
+fn add(context: &mut ffi::Context, input: &ffi::TextInput) -> Result<(), std::io::Error> {
+    let schema = &context.tantivyContext.schema;
+    let index_writer = &mut context.tantivyContext.index_writer;
+    let props = schema.get_field("props").unwrap();
+
+    match index_writer.add_document(doc!(props => input.data.clone())) {
+        Ok(_) => match index_writer.commit() {
+            Ok(_) => {
+                return Ok(());
+            }
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Unable to commit adding document -> {}", e),
+                ));
+            }
+        },
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to add document -> {}", e),
+            ));
         }
-        Err(_) => return false,
     };
-    match context.tantivyContext.index_writer.commit() {
-        Ok(_) => return true,
-        Err(_) => return false,
-    }
 }
 
 fn search(
     context: &mut ffi::Context,
     input: &ffi::SearchInput,
 ) -> Result<ffi::SearchOutput, std::io::Error> {
-    let reader = match context
-        .tantivyContext
-        .index
+    let index = &context.tantivyContext.index;
+    let schema = &context.tantivyContext.schema;
+
+    let reader = match index
         .reader_builder()
         .reload_policy(ReloadPolicy::OnCommit)
         .try_into()
@@ -76,9 +87,8 @@ fn search(
             ));
         }
     };
-    let searcher = reader.searcher();
-    let props = context.tantivyContext.schema.get_field("props").unwrap();
-    let query_parser = QueryParser::for_index(&context.tantivyContext.index, vec![props]);
+    let props = schema.get_field("props").unwrap();
+    let query_parser = QueryParser::for_index(index, vec![props]);
     let query = match query_parser.parse_query(&input.query) {
         Ok(q) => q,
         Err(_e) => {
@@ -88,7 +98,7 @@ fn search(
             ));
         }
     };
-    let top_docs = match searcher.search(&query, &TopDocs::with_limit(10)) {
+    let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(10)) {
         Ok(docs) => docs,
         Err(_e) => {
             return Err(Error::new(ErrorKind::Other, "Unable to perform search"));
