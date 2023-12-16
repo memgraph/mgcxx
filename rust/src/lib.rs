@@ -6,14 +6,14 @@ use tantivy::schema::*;
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
 
 // NOTE: Result<T> == Result<T,std::io::Error>.
-#[cxx::bridge]
+#[cxx::bridge(namespace = "cxxtantivy")]
 mod ffi {
-    #[namespace = "text_search"]
     struct Context {
         tantivyContext: Box<TantivyContext>,
     }
 
-    #[namespace = "text_search"]
+    // TODO(gitbuda): Having input Element object under ffi is a problem for general solution.
+    // NOTE: This struct is / should be aligned with the schema.
     struct Element {
         gid: u64,
         txid: u64,
@@ -22,26 +22,22 @@ mod ffi {
         props: String,
     }
 
-    #[namespace = "text_search"]
     struct DocumentInput {
         // TODO(gitbuda): What's the best type here? String or JSON
         data: Element,
     }
 
-    #[namespace = "text_search"]
     struct SearchInput {
         query: String,
         // TODO(gitbuda): Add stuff like skip & limit.
     }
 
-    #[namespace = "text_search"]
     struct SearchOutput {
         docs: Vec<Element>,
         // TODO(gitbuda): Add stuff like page (skip, limit).
     }
 
     // NOTE: Since return type is Result<T>, always return Result<Something>.
-    #[namespace = "cxxtantivy"]
     extern "Rust" {
         type TantivyContext;
         fn drop_index() -> Result<()>;
