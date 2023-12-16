@@ -5,6 +5,15 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
 endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+include(FetchContent)
+
+file(DOWNLOAD https://raw.githubusercontent.com/memgraph/cmake/main/modules/fetch-nlohmann.cmake
+     ${CMAKE_BINARY_DIR}/fetch-nlohmann.cmake)
+include(${CMAKE_BINARY_DIR}/fetch-nlohmann.cmake)
+
+file(DOWNLOAD https://raw.githubusercontent.com/memgraph/cmake/main/modules/fetch-gbenchmark.cmake
+     ${CMAKE_BINARY_DIR}/fetch-gbenchmark.cmake)
+include(${CMAKE_BINARY_DIR}/fetch-gbenchmark.cmake)
 
 # TODO(gitbuda): Make LTO work on Mac because ldd (consider options and default).
 message(STATUS "CMake build type: ${CMAKE_BUILD_TYPE}")
@@ -28,5 +37,8 @@ endif()
 include_directories(${CMAKE_BINARY_DIR}/rust)
 add_subdirectory(rust)
 
-add_executable(main text_search_poc.cpp)
-target_link_libraries(main cxxtantivy_rust)
+add_executable(text_search_poc text_search_poc.cpp)
+target_link_libraries(text_search_poc PRIVATE nlohmann_json::nlohmann_json cxxtantivy_rust)
+
+add_executable(text_search_bench text_search_bench.cpp)
+target_link_libraries(text_search_bench PRIVATE benchmark::benchmark cxxtantivy_rust)

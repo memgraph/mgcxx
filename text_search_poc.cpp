@@ -1,6 +1,8 @@
 #include <iostream>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 // TODO(gitbuda): Add benchmark (add|retrieve simple|complex, filtering,
 // aggregations).
 // TODO(gitbuda): init -> create_index + add the ability to inject schema.
@@ -13,12 +15,15 @@
 std::vector<cxxtantivy::DocumentInput> dummy_data(uint64_t size = 1) {
   std::vector<cxxtantivy::DocumentInput> data;
   for (uint64_t index = 0; index < size; ++index) {
+    nlohmann::json props = {
+        {"key", "value1"},
+    };
     cxxtantivy::DocumentInput doc = {
         .data = cxxtantivy::Element{.gid = index,
                                     .txid = index,
                                     .deleted = false,
                                     .is_node = false,
-                                    .props = "{key:value1}"}};
+                                    .props = props.dump()}};
     data.push_back(doc);
   }
   return data;
