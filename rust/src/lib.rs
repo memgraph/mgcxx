@@ -1,3 +1,4 @@
+use log::debug;
 use std::io::{Error, ErrorKind};
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
@@ -41,7 +42,8 @@ mod ffi {
     extern "Rust" {
         type TantivyContext;
         fn drop_index() -> Result<()>;
-        fn init() -> Result<Context>;
+        fn init() -> Result<()>;
+        fn create_index() -> Result<Context>;
         fn add(context: &mut Context, input: &DocumentInput) -> Result<()>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
     }
@@ -164,22 +166,29 @@ fn drop_index() -> Result<(), std::io::Error> {
     if index_path.exists() {
         match std::fs::remove_dir_all(index_path) {
             Ok(_) => {
-                println!("tantivy index removed");
+                debug!("tantivy_index removed");
             }
             Err(_) => {
                 panic!("Failed to remove tantivy_index folder");
             }
         }
     } else {
-        return Err(Error::new(
-            ErrorKind::Other,
-            format!("Index doesn't not exist."),
-        ));
+        debug!("tantivy_index folder doesn't exist");
     }
     Ok(())
 }
 
-fn init() -> Result<ffi::Context, std::io::Error> {
+fn init() -> Result<(), std::io::Error> {
+    let log_init_res = env_logger::try_init_from_env(
+        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
+    );
+    if let Err(e) = log_init_res {
+        println!("failed to initialize logger: {e:?}");
+    }
+    Ok(())
+}
+
+fn create_index() -> Result<ffi::Context, std::io::Error> {
     // TODO(gitbuda): Expose elements to configure schema on the C++ side.
     let mut schema_builder = Schema::builder();
     schema_builder.add_u64_field("gid", FAST | STORED);
@@ -194,7 +203,7 @@ fn init() -> Result<ffi::Context, std::io::Error> {
     if !index_path.exists() {
         match std::fs::create_dir(index_path) {
             Ok(_) => {
-                println!("tantivy_index folder created");
+                debug!("tantivy_index folder created");
             }
             Err(_) => {
                 panic!("Failed to create tantivy_index folder");

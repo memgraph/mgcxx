@@ -1,4 +1,3 @@
-project(cxxtantivy)
 cmake_minimum_required(VERSION 3.15)
 set (CMAKE_CXX_STANDARD 20)
 if (NOT CMAKE_BUILD_TYPE)
@@ -6,6 +5,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(FetchContent)
+project(cxxtantivy)
 
 file(DOWNLOAD https://raw.githubusercontent.com/memgraph/cmake/main/modules/fetch-nlohmann.cmake
      ${CMAKE_BINARY_DIR}/fetch-nlohmann.cmake)
@@ -41,4 +41,4 @@ add_executable(text_search_poc text_search_poc.cpp)
 target_link_libraries(text_search_poc PRIVATE nlohmann_json::nlohmann_json cxxtantivy_rust)
 
 add_executable(text_search_bench text_search_bench.cpp)
-target_link_libraries(text_search_bench PRIVATE benchmark::benchmark cxxtantivy_rust)
+target_link_libraries(text_search_bench PRIVATE benchmark::benchmark nlohmann_json::nlohmann_json cxxtantivy_rust)
