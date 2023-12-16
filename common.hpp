@@ -1,3 +1,4 @@
+#include <chrono>
 #include <iostream>
 #include <vector>
 
@@ -28,4 +29,22 @@ std::ostream &operator<<(std::ostream &os, const cxxtantivy::Element &element) {
      << "; DELETED: " << element.deleted << "; IS_NODE: " << element.is_node
      << "; PROPS: " << element.props;
   return os;
+}
+
+auto now() { return std::chrono::steady_clock::now(); }
+template <typename T>
+auto print_time_diff(std::string_view prefix, T start, T end) {
+  std::cout << prefix << " dt = "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                     start)
+                   .count()
+            << "[µs]" << std::endl;
+}
+template <typename T>
+auto measure_time_diff(std::string_view prefix, std::function<T()> f) {
+  auto start = now();
+  T result = f();
+  auto end = now();
+  print_time_diff(prefix, start, end);
+  return result;
 }

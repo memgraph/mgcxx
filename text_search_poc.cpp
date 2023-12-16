@@ -16,10 +16,14 @@ int main() {
     cxxtantivy::drop_index();
     auto context = cxxtantivy::create_index();
     for (const auto &doc : dummy_data(5)) {
-      cxxtantivy::add(context, doc);
+      measure_time_diff<int>("add", [&]() {
+        cxxtantivy::add(context, doc);
+        return 0;
+      });
     }
     cxxtantivy::SearchInput search = {.query = "value1"};
-    auto result = cxxtantivy::search(context, search);
+    auto result = measure_time_diff<cxxtantivy::SearchOutput>(
+        "search", [&]() { return cxxtantivy::search(context, search); });
     for (const auto &doc : result.docs) {
       std::cout << doc << std::endl;
     }
