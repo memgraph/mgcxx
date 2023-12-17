@@ -35,12 +35,17 @@ mod ffi {
 
     struct SearchInput {
         query: String,
+        aggregation: String,
         // TODO(gitbuda): Add stuff like skip & limit.
     }
 
     struct SearchOutput {
         docs: Vec<Element>,
         // TODO(gitbuda): Add stuff like page (skip, limit).
+    }
+
+    struct AggregateOutput {
+        result: String, // TODO(gitbuda): Here should be Option but it's not supported in cxx.
     }
 
     // NOTE: Since return type is Result<T>, always return Result<Something>.
@@ -51,7 +56,7 @@ mod ffi {
         fn create_index() -> Result<Context>;
         fn add(context: &mut Context, input: &DocumentInput) -> Result<()>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
-        fn aggregate(context: &mut Context, input: &SearchInput) -> Result<u64>;
+        fn aggregate(context: &mut Context, input: &SearchInput) -> Result<AggregateOutput>;
     }
 }
 
@@ -99,8 +104,12 @@ fn add(context: &mut ffi::Context, input: &ffi::DocumentInput) -> Result<(), std
     };
 }
 
-fn aggregate(context: &mut ffi::Context, _input: &ffi::SearchInput) -> Result<u64, std::io::Error> {
+fn aggregate(
+    context: &mut ffi::Context,
+    input: &ffi::SearchInput,
+) -> Result<ffi::AggregateOutput, std::io::Error> {
     let index = &context.tantivyContext.index;
+    let schema = &context.tantivyContext.schema;
     let reader = match index
         .reader_builder()
         .reload_policy(ReloadPolicy::OnCommit)
@@ -114,19 +123,31 @@ fn aggregate(context: &mut ffi::Context, _input: &ffi::SearchInput) -> Result<u6
             ));
         }
     };
+
+    let props_field = schema.get_field("props").unwrap();
+    let query_parser = QueryParser::for_index(index, vec![props_field]);
+    let query = match query_parser.parse_query(&input.query) {
+        Ok(q) => q,
+        Err(_e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                "Unable to create search query",
+            ));
+        }
+    };
+
     let searcher = reader.searcher();
-    let agg_req_str = r#"{
-      "value_count": {
-        "value_count": { "field": "txid" }
-      }
-    }"#;
-    let agg_req: Aggregations = serde_json::from_str(agg_req_str)?;
+    // TODO(gitbuda): Debug why the aggregation string can't be passed...
+    // let agg_req: Aggregations = serde_json::from_str(&input.aggregation)?;
+    let agg_req_str = r#"{ "value_count": { "value_count": { "field": "txid" } } }"#;
+    let agg_req: Aggregations = serde_json::from_str(&agg_req_str)?;
     let collector = AggregationCollector::from_aggs(agg_req, Default::default());
-    // We use the `AllQuery` which will pass all documents to the AggregationCollector.
-    let agg_res: AggregationResults = searcher.search(&AllQuery, &collector).unwrap();
+    // NOTE: `AllQuery` could be used to pass all documents to the AggregationCollector.
+    let agg_res: AggregationResults = searcher.search(&query, &collector).unwrap();
     let res: Value = serde_json::to_value(agg_res)?;
-    println!("{}", res);
-    Ok(0)
+    Ok(ffi::AggregateOutput {
+        result: res.to_string(),
+    })
 }
 
 fn search(

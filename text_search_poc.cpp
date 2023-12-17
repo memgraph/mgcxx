@@ -27,7 +27,15 @@ int main() {
     for (const auto &doc : result.docs) {
       std::cout << doc << std::endl;
     }
-    cxxtantivy::aggregate(context, search);
+    nlohmann::json j = {};
+    j["value_count"]["value_count"]["field"] = "txid";
+    std::cout << j.dump() << std::endl;
+    cxxtantivy::SearchInput aggregate = {
+        .query = "value1",
+        .aggregation = j.dump(),
+    };
+    auto agg = cxxtantivy::aggregate(context, search);
+    std::cout << agg.result << std::endl;
   } catch (const rust::Error &error) {
     std::cout << error.what() << std::endl;
   }
