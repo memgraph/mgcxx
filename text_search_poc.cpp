@@ -15,7 +15,7 @@ int main() {
     cxxtantivy::init();
     cxxtantivy::drop_index();
     auto context = cxxtantivy::create_index();
-    for (const auto &doc : dummy_data(5)) {
+    for (const auto &doc : dummy_data(5, 5)) {
       measure_time_diff<int>("add", [&]() {
         cxxtantivy::add(context, doc);
         return 0;
@@ -27,6 +27,7 @@ int main() {
     for (const auto &doc : result.docs) {
       std::cout << doc << std::endl;
     }
+    cxxtantivy::aggregate(context, search);
   } catch (const rust::Error &error) {
     std::cout << error.what() << std::endl;
   }

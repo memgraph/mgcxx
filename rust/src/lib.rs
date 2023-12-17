@@ -1,7 +1,12 @@
 use log::debug;
+use serde_json::Value;
 use std::io::{Error, ErrorKind};
+use tantivy::aggregation::agg_req::Aggregations;
+use tantivy::aggregation::agg_result::AggregationResults;
+use tantivy::aggregation::AggregationCollector;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
+use tantivy::query::AllQuery;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
@@ -46,6 +51,7 @@ mod ffi {
         fn create_index() -> Result<Context>;
         fn add(context: &mut Context, input: &DocumentInput) -> Result<()>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
+        fn aggregate(context: &mut Context, input: &SearchInput) -> Result<u64>;
     }
 }
 
@@ -91,6 +97,36 @@ fn add(context: &mut ffi::Context, input: &ffi::DocumentInput) -> Result<(), std
             ));
         }
     };
+}
+
+fn aggregate(context: &mut ffi::Context, _input: &ffi::SearchInput) -> Result<u64, std::io::Error> {
+    let index = &context.tantivyContext.index;
+    let reader = match index
+        .reader_builder()
+        .reload_policy(ReloadPolicy::OnCommit)
+        .try_into()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to read (reader init failed): {}", e),
+            ));
+        }
+    };
+    let searcher = reader.searcher();
+    let agg_req_str = r#"{
+      "value_count": {
+        "value_count": { "field": "txid" }
+      }
+    }"#;
+    let agg_req: Aggregations = serde_json::from_str(agg_req_str)?;
+    let collector = AggregationCollector::from_aggs(agg_req, Default::default());
+    // We use the `AllQuery` which will pass all documents to the AggregationCollector.
+    let agg_res: AggregationResults = searcher.search(&AllQuery, &collector).unwrap();
+    let res: Value = serde_json::to_value(agg_res)?;
+    println!("{}", res);
+    Ok(0)
 }
 
 fn search(

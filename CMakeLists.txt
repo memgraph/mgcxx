@@ -4,8 +4,13 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
 endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+include(ExternalProject)
 include(FetchContent)
 project(cxxtantivy)
+
+file(DOWNLOAD https://raw.githubusercontent.com/memgraph/cmake/main/modules/external-fmt.cmake
+     ${CMAKE_BINARY_DIR}/external-fmt.cmake)
+include(${CMAKE_BINARY_DIR}/external-fmt.cmake)
 
 file(DOWNLOAD https://raw.githubusercontent.com/memgraph/cmake/main/modules/fetch-nlohmann.cmake
      ${CMAKE_BINARY_DIR}/fetch-nlohmann.cmake)
@@ -38,7 +43,7 @@ include_directories(${CMAKE_BINARY_DIR}/rust)
 add_subdirectory(rust)
 
 add_executable(text_search_poc text_search_poc.cpp)
-target_link_libraries(text_search_poc PRIVATE nlohmann_json::nlohmann_json cxxtantivy_rust)
+target_link_libraries(text_search_poc PRIVATE fmtlib_static nlohmann_json::nlohmann_json cxxtantivy_rust)
 
 add_executable(text_search_bench text_search_bench.cpp)
-target_link_libraries(text_search_bench PRIVATE benchmark::benchmark nlohmann_json::nlohmann_json cxxtantivy_rust)
+target_link_libraries(text_search_bench PRIVATE fmtlib_static benchmark::benchmark nlohmann_json::nlohmann_json cxxtantivy_rust)

@@ -2,20 +2,25 @@
 #include <iostream>
 #include <vector>
 
+#include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
 #include "cxx.hpp"
 #include "rust.hpp"
 
-std::vector<cxxtantivy::DocumentInput> dummy_data(uint64_t size = 1) {
+std::vector<cxxtantivy::DocumentInput> dummy_data(uint64_t docs_no = 1,
+                                                  uint64_t props_no = 1) {
   std::vector<cxxtantivy::DocumentInput> data;
-  for (uint64_t index = 0; index < size; ++index) {
-    nlohmann::json props = {
-        {"key", "value1"},
-    };
+  for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
+    nlohmann::json props = {};
+    for (uint64_t prop_index = 0; prop_index < props_no; ++prop_index) {
+      props[fmt::format("key{}", prop_index)] =
+          fmt::format("value{}", prop_index);
+    }
+    std::cout << props.dump() << std::endl;
     cxxtantivy::DocumentInput doc = {
-        .data = cxxtantivy::Element{.gid = index,
-                                    .txid = index,
+        .data = cxxtantivy::Element{.gid = doc_index,
+                                    .txid = doc_index,
                                     .deleted = false,
                                     .is_node = false,
                                     .props = props.dump()}};
