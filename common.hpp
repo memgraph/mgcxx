@@ -17,7 +17,6 @@ std::vector<cxxtantivy::DocumentInput> dummy_data(uint64_t docs_no = 1,
       props[fmt::format("key{}", prop_index)] =
           fmt::format("value{}", prop_index);
     }
-    std::cout << props.dump() << std::endl;
     cxxtantivy::DocumentInput doc = {
         .data = cxxtantivy::Element{.gid = doc_index,
                                     .txid = doc_index,
@@ -44,6 +43,7 @@ auto print_time_diff(std::string_view prefix, T start, T end) {
                                                                      start)
                    .count()
             << "[µs]" << std::endl;
+  // << "[ms]" << std::endl;
 }
 template <typename T>
 auto measure_time_diff(std::string_view prefix, std::function<T()> f) {

@@ -17,8 +17,8 @@ int main() {
     cxxtantivy::init();
 
     // init index
-    cxxtantivy::drop_index();
-    auto context = cxxtantivy::create_index();
+    cxxtantivy::drop_index("tantivy_index_poc");
+    auto context = cxxtantivy::create_index("tantivy_index_poc");
 
     // add data
     for (const auto &doc : dummy_data(5, 5)) {

@@ -59,9 +59,9 @@ mod ffi {
     // NOTE: Since return type is Result<T>, always return Result<Something>.
     extern "Rust" {
         type TantivyContext;
-        fn drop_index() -> Result<()>;
+        fn drop_index(name: &String) -> Result<()>;
         fn init() -> Result<()>;
-        fn create_index() -> Result<Context>;
+        fn create_index(name: &String) -> Result<Context>;
         fn add(context: &mut Context, input: &DocumentInput) -> Result<()>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<AggregateOutput>;
@@ -222,15 +222,15 @@ fn search(
     Ok(ffi::SearchOutput { docs })
 }
 
-fn drop_index() -> Result<(), std::io::Error> {
-    let index_path = std::path::Path::new("tantivy_index");
+fn drop_index(name: &String) -> Result<(), std::io::Error> {
+    let index_path = std::path::Path::new(name);
     if index_path.exists() {
         match std::fs::remove_dir_all(index_path) {
             Ok(_) => {
                 debug!("tantivy_index removed");
             }
             Err(_) => {
-                panic!("Failed to remove tantivy_index folder");
+                // panic!("Failed to remove tantivy_index folder {}", e);
             }
         }
     } else {
@@ -249,7 +249,7 @@ fn init() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn create_index() -> Result<ffi::Context, std::io::Error> {
+fn create_index(name: &String) -> Result<ffi::Context, std::io::Error> {
     // TODO(gitbuda): Expose elements to configure schema on the C++ side.
     let mut schema_builder = Schema::builder();
     schema_builder.add_u64_field("gid", FAST | STORED);
@@ -260,7 +260,7 @@ fn create_index() -> Result<ffi::Context, std::io::Error> {
     let schema = schema_builder.build();
 
     // TODO(gitbuda): Expose index path to be configurable on the C++ side.
-    let index_path = std::path::Path::new("tantivy_index");
+    let index_path = std::path::Path::new(name);
     if !index_path.exists() {
         match std::fs::create_dir(index_path) {
             Ok(_) => {
