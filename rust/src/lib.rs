@@ -6,7 +6,6 @@ use tantivy::aggregation::agg_result::AggregationResults;
 use tantivy::aggregation::AggregationCollector;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
-use tantivy::query::AllQuery;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
@@ -21,11 +20,20 @@ mod ffi {
     // TODO(gitbuda): Having input Element object under ffi is a problem for general solution.
     // NOTE: This struct is / should be aligned with the schema.
     struct Element {
+        // the following are metadata fields required by Memgraph
+        // TODO(gitbuda): Maybe all the following can be JSON and FAST
         gid: u64,
         txid: u64,
         deleted: bool,
         is_node: bool,
-        props: String,
+        props: String, // TODO(gitbuda): Consider using https://cxx.rs/binding/cxxstring.html (c++
+                       // string on Rust stack).
+                       // TODO(gitbuda): Consider renanaming to data, because could be used in 2 cases:
+                       //     * PropertyStore - serialize -> data
+                       //     * SingleProperty - serialize -> data
+                       // OPTION A:
+                       //   * meta: CxxString
+                       //   * data: CxxString
     }
 
     struct DocumentInput {
@@ -34,8 +42,8 @@ mod ffi {
     }
 
     struct SearchInput {
-        query: String,
-        aggregation: String,
+        search_query: String,
+        aggregation_query: String,
         // TODO(gitbuda): Add stuff like skip & limit.
     }
 
@@ -45,7 +53,7 @@ mod ffi {
     }
 
     struct AggregateOutput {
-        result: String, // TODO(gitbuda): Here should be Option but it's not supported in cxx.
+        data: String, // TODO(gitbuda): Here should be Option but it's not supported in cxx.
     }
 
     // NOTE: Since return type is Result<T>, always return Result<Something>.
@@ -126,7 +134,7 @@ fn aggregate(
 
     let props_field = schema.get_field("props").unwrap();
     let query_parser = QueryParser::for_index(index, vec![props_field]);
-    let query = match query_parser.parse_query(&input.query) {
+    let query = match query_parser.parse_query(&input.search_query) {
         Ok(q) => q,
         Err(_e) => {
             return Err(Error::new(
@@ -137,16 +145,12 @@ fn aggregate(
     };
 
     let searcher = reader.searcher();
-    // TODO(gitbuda): Debug why the aggregation string can't be passed...
-    // let agg_req: Aggregations = serde_json::from_str(&input.aggregation)?;
-    let agg_req_str = r#"{ "value_count": { "value_count": { "field": "txid" } } }"#;
-    let agg_req: Aggregations = serde_json::from_str(&agg_req_str)?;
+    let agg_req: Aggregations = serde_json::from_str(&input.aggregation_query)?;
     let collector = AggregationCollector::from_aggs(agg_req, Default::default());
-    // NOTE: `AllQuery` could be used to pass all documents to the AggregationCollector.
     let agg_res: AggregationResults = searcher.search(&query, &collector).unwrap();
     let res: Value = serde_json::to_value(agg_res)?;
     Ok(ffi::AggregateOutput {
-        result: res.to_string(),
+        data: res.to_string(),
     })
 }
 
@@ -178,7 +182,7 @@ fn search(
     let props_field = schema.get_field("props").unwrap();
 
     let query_parser = QueryParser::for_index(index, vec![props_field]);
-    let query = match query_parser.parse_query(&input.query) {
+    let query = match query_parser.parse_query(&input.search_query) {
         Ok(q) => q,
         Err(_e) => {
             return Err(Error::new(

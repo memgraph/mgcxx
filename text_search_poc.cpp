@@ -12,30 +12,47 @@
 
 int main() {
   try {
+    // init tantivy engine (actually logging setup, should be called once per
+    // process, early)
     cxxtantivy::init();
+
+    // init index
     cxxtantivy::drop_index();
     auto context = cxxtantivy::create_index();
+
+    // add data
     for (const auto &doc : dummy_data(5, 5)) {
       measure_time_diff<int>("add", [&]() {
         cxxtantivy::add(context, doc);
         return 0;
       });
     }
-    cxxtantivy::SearchInput search = {.query = "value1"};
-    auto result = measure_time_diff<cxxtantivy::SearchOutput>(
-        "search", [&]() { return cxxtantivy::search(context, search); });
-    for (const auto &doc : result.docs) {
+
+    // search example
+    cxxtantivy::SearchInput search_input = {.search_query = "value1"};
+    auto result1 = measure_time_diff<cxxtantivy::SearchOutput>(
+        "search1", [&]() { return cxxtantivy::search(context, search_input); });
+    for (const auto &doc : result1.docs) {
       std::cout << doc << std::endl;
     }
-    nlohmann::json j = {};
-    j["value_count"]["value_count"]["field"] = "txid";
-    std::cout << j.dump() << std::endl;
+
+    for (uint64_t i = 0; i < 10; ++i) {
+      auto result = measure_time_diff<cxxtantivy::SearchOutput>(
+          fmt::format("search{}", i),
+          [&]() { return cxxtantivy::search(context, search_input); });
+    }
+
+    // aggregation example
+    nlohmann::json aggregation_query = {};
+    aggregation_query["count"]["value_count"]["field"] = "txid";
     cxxtantivy::SearchInput aggregate = {
-        .query = "value1",
-        .aggregation = j.dump(),
+        .search_query = "value12",
+        .aggregation_query = aggregation_query.dump(),
     };
-    auto agg = cxxtantivy::aggregate(context, search);
-    std::cout << agg.result << std::endl;
+    auto aggregation_result =
+        nlohmann::json::parse(cxxtantivy::aggregate(context, aggregate).data);
+    std::cout << aggregation_result << std::endl;
+
   } catch (const rust::Error &error) {
     std::cout << error.what() << std::endl;
   }
