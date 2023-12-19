@@ -29,7 +29,7 @@ int main() {
     }
 
     // search example
-    cxxtantivy::SearchInput search_input = {.search_query = "value1"};
+    cxxtantivy::SearchInput search_input = {.search_query = "key1:value1"};
     auto result1 = measure_time_diff<cxxtantivy::SearchOutput>(
         "search1", [&]() { return cxxtantivy::search(context, search_input); });
     for (const auto &doc : result1.docs) {

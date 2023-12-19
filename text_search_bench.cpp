@@ -9,6 +9,9 @@
 
 // TODO(gitbuda): Add benchmarks:
 //   * BENCH1: Search direct field vs JSON, FAST vs SLOW, String vs CxxString
+//   * BENCH2: MATCH (n) RETURN count(n), n.deleted;
+//   * BENCH3: search of a specific property value
+//   * BENCH4: search of all properties
 
 static std::atomic<uint64_t> cnt{0};
 static bool global_init_done{false};

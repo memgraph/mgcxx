@@ -1,5 +1,5 @@
 use log::debug;
-use serde_json::Value;
+use serde_json::{to_string, Value};
 use std::io::{Error, ErrorKind};
 use tantivy::aggregation::agg_req::Aggregations;
 use tantivy::aggregation::agg_result::AggregationResults;
@@ -20,20 +20,22 @@ mod ffi {
     // TODO(gitbuda): Having input Element object under ffi is a problem for general solution.
     // NOTE: This struct is / should be aligned with the schema.
     struct Element {
+        data: String,
         // the following are metadata fields required by Memgraph
         // TODO(gitbuda): Maybe all the following can be JSON and FAST
-        gid: u64,
-        txid: u64,
-        deleted: bool,
-        is_node: bool,
-        props: String, // TODO(gitbuda): Consider using https://cxx.rs/binding/cxxstring.html (c++
-                       // string on Rust stack).
-                       // TODO(gitbuda): Consider renanaming to data, because could be used in 2 cases:
-                       //     * PropertyStore - serialize -> data
-                       //     * SingleProperty - serialize -> data
-                       // OPTION A:
-                       //   * meta: CxxString
-                       //   * data: CxxString
+        // metadata: String,
+        // gid: u64,
+        // txid: u64,
+        // deleted: bool,
+        // is_node: bool,
+        // props: String, // TODO(gitbuda): Consider using https://cxx.rs/binding/cxxstring.html (c++
+        //                // string on Rust stack).
+        //                // TODO(gitbuda): Consider renanaming to data, because could be used in 2 cases:
+        //                //     * PropertyStore - serialize -> data
+        //                //     * SingleProperty - serialize -> data
+        //                // OPTION A:
+        //                //   * meta: CxxString
+        //                //   * data: CxxString
     }
 
     struct DocumentInput {
@@ -79,19 +81,27 @@ fn add(context: &mut ffi::Context, input: &ffi::DocumentInput) -> Result<(), std
     let schema = &context.tantivyContext.schema;
     let index_writer = &mut context.tantivyContext.index_writer;
 
-    let gid_field = schema.get_field("gid").unwrap();
-    let txid_field = schema.get_field("txid").unwrap();
-    let deleted_field = schema.get_field("deleted").unwrap();
-    let is_node_field = schema.get_field("is_node").unwrap();
-    let props_field = schema.get_field("props").unwrap();
+    // let metadata_field = schema.get_field("metadata"). unwrap();
+    // TODO(gitbuda): schema.parse_document > TantivyDocument::parse_json (LATEST)
+    let document = match schema.parse_document(&input.data.data) {
+        Ok(json) => json,
+        Err(e) => panic!("failed to parser metadata {}", e),
+    };
+    // let gid_field = schema.get_field("gid").unwrap();
+    // let txid_field = schema.get_field("txid").unwrap();
+    // let deleted_field = schema.get_field("deleted").unwrap();
+    // let is_node_field = schema.get_field("is_node").unwrap();
+    // let props_field = schema.get_field("props").unwrap();
 
-    match index_writer.add_document(doc!(
-            gid_field => input.data.gid,
-            txid_field => input.data.txid,
-            deleted_field => input.data.deleted,
-            is_node_field => input.data.is_node,
-            props_field => input.data.props.clone()))
-    {
+    match index_writer.add_document(document) {
+        // match index_writer.add_document(doc!(
+        //         metadata_field => metadata,
+        //         // gid_field => input.data.gid,
+        //         // txid_field => input.data.txid,
+        //         // deleted_field => input.data.deleted,
+        //         // is_node_field => input.data.is_node,
+        //         props_field => input.data.props.clone()))
+        // {
         Ok(_) => match index_writer.commit() {
             Ok(_) => {
                 return Ok(());
@@ -136,10 +146,10 @@ fn aggregate(
     let query_parser = QueryParser::for_index(index, vec![props_field]);
     let query = match query_parser.parse_query(&input.search_query) {
         Ok(q) => q,
-        Err(_e) => {
+        Err(e) => {
             return Err(Error::new(
                 ErrorKind::Other,
-                "Unable to create search query",
+                format!("Unable to create search query {}", e),
             ));
         }
     };
@@ -175,19 +185,20 @@ fn search(
         }
     };
 
-    let gid_field = schema.get_field("gid").unwrap();
-    let txid_field = schema.get_field("txid").unwrap();
-    let deleted_field = schema.get_field("deleted").unwrap();
-    let is_node_field = schema.get_field("is_node").unwrap();
+    let metadata_field = schema.get_field("metadata").unwrap();
+    // let gid_field = schema.get_field("gid").unwrap();
+    // let txid_field = schema.get_field("txid").unwrap();
+    // let deleted_field = schema.get_field("deleted").unwrap();
+    // let is_node_field = schema.get_field("is_node").unwrap();
     let props_field = schema.get_field("props").unwrap();
 
     let query_parser = QueryParser::for_index(index, vec![props_field]);
     let query = match query_parser.parse_query(&input.search_query) {
         Ok(q) => q,
-        Err(_e) => {
+        Err(e) => {
             return Err(Error::new(
                 ErrorKind::Other,
-                "Unable to create search query",
+                format!("Unable to create search query {}", e),
             ));
         }
     };
@@ -206,17 +217,25 @@ fn search(
                 panic!("Unable to find document returned by the search query.");
             }
         };
-        let gid = doc.get_first(gid_field).unwrap().as_u64().unwrap();
-        let txid = doc.get_first(txid_field).unwrap().as_u64().unwrap();
-        let deleted = doc.get_first(deleted_field).unwrap().as_bool().unwrap();
-        let is_node = doc.get_first(is_node_field).unwrap().as_bool().unwrap();
-        let props = doc.get_first(props_field).unwrap().as_text().unwrap();
+        // let gid = doc.get_first(gid_field).unwrap().as_u64().unwrap();
+        // let txid = doc.get_first(txid_field).unwrap().as_u64().unwrap();
+        // let deleted = doc.get_first(deleted_field).unwrap().as_bool().unwrap();
+        // let is_node = doc.get_first(is_node_field).unwrap().as_bool().unwrap();
+        let metadata = doc.get_first(metadata_field).unwrap().as_json().unwrap();
+        let props = doc.get_first(props_field).unwrap().as_json().unwrap();
+        let data = schema.to_json(&doc);
         docs.push(ffi::Element {
-            gid,
-            txid,
-            deleted,
-            is_node,
-            props: props.to_string(),
+            data: match to_string(&data) {
+                Ok(s) => s,
+                Err(_e) => {
+                    panic!("stored data not JSON");
+                }
+            },
+            // gid,
+            // txid,
+            // deleted,
+            // is_node,
+            // props: props.to_string(),
         });
     }
     Ok(ffi::SearchOutput { docs })
@@ -252,11 +271,15 @@ fn init() -> Result<(), std::io::Error> {
 fn create_index(name: &String) -> Result<ffi::Context, std::io::Error> {
     // TODO(gitbuda): Expose elements to configure schema on the C++ side.
     let mut schema_builder = Schema::builder();
-    schema_builder.add_u64_field("gid", FAST | STORED);
-    schema_builder.add_u64_field("txid", FAST | STORED);
-    schema_builder.add_bool_field("deleted", FAST | STORED);
-    schema_builder.add_bool_field("is_node", FAST | STORED);
-    schema_builder.add_text_field("props", TEXT | STORED);
+    schema_builder.add_json_field("metadata", FAST | STORED);
+    // schema_builder.add_u64_field("gid", FAST | STORED);
+    // schema_builder.add_u64_field("txid", FAST | STORED);
+    // schema_builder.add_bool_field("deleted", FAST | STORED);
+    // schema_builder.add_bool_field("is_node", FAST | STORED);
+    // NOTE: TEXT is required to be able to search here
+    // TODO(gitbuda): Test what's the tradeoff between searching STRING vs JSON TEXT, how does the
+    // query look like?
+    schema_builder.add_json_field("props", STORED | TEXT);
     let schema = schema_builder.build();
 
     // TODO(gitbuda): Expose index path to be configurable on the C++ side.
