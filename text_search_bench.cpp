@@ -43,7 +43,7 @@ BENCHMARK_DEFINE_F(MyFixture, BM_AddSimple)(benchmark::State &state) {
 
   for (auto _ : state) {
     for (const auto &doc : generated_data) {
-      cxxtantivy::add(*context, doc);
+      cxxtantivy::add1(*context, doc);
     }
   }
 }

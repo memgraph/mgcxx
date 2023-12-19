@@ -38,9 +38,9 @@ mod ffi {
         //                //   * data: CxxString
     }
 
-    struct DocumentInput {
+    struct DocumentInput1 {
         // TODO(gitbuda): What's the best type here? String or JSON
-        data: Element,
+        data: String,
     }
 
     struct SearchInput {
@@ -64,7 +64,7 @@ mod ffi {
         fn drop_index(name: &String) -> Result<()>;
         fn init() -> Result<()>;
         fn create_index(name: &String) -> Result<Context>;
-        fn add(context: &mut Context, input: &DocumentInput) -> Result<()>;
+        fn add1(context: &mut Context, input: &DocumentInput1) -> Result<()>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<AggregateOutput>;
     }
@@ -77,13 +77,13 @@ pub struct TantivyContext {
     pub index_writer: IndexWriter,
 }
 
-fn add(context: &mut ffi::Context, input: &ffi::DocumentInput) -> Result<(), std::io::Error> {
+fn add1(context: &mut ffi::Context, input: &ffi::DocumentInput1) -> Result<(), std::io::Error> {
     let schema = &context.tantivyContext.schema;
     let index_writer = &mut context.tantivyContext.index_writer;
 
     // let metadata_field = schema.get_field("metadata"). unwrap();
     // TODO(gitbuda): schema.parse_document > TantivyDocument::parse_json (LATEST)
-    let document = match schema.parse_document(&input.data.data) {
+    let document = match schema.parse_document(&input.data) {
         Ok(json) => json,
         Err(e) => panic!("failed to parser metadata {}", e),
     };
@@ -276,10 +276,13 @@ fn create_index(name: &String) -> Result<ffi::Context, std::io::Error> {
     // schema_builder.add_u64_field("txid", FAST | STORED);
     // schema_builder.add_bool_field("deleted", FAST | STORED);
     // schema_builder.add_bool_field("is_node", FAST | STORED);
+
     // NOTE: TEXT is required to be able to search here
     // TODO(gitbuda): Test what's the tradeoff between searching STRING vs JSON TEXT, how does the
     // query look like?
-    schema_builder.add_json_field("props", STORED | TEXT);
+    // TODO(gitbuda): Benchmark SLOW vs FAST on props, consider this making the configurable by the
+    // user -> what's the tradeoff?
+    schema_builder.add_json_field("props", STORED | TEXT | FAST);
     let schema = schema_builder.build();
 
     // TODO(gitbuda): Expose index path to be configurable on the C++ side.

@@ -8,9 +8,9 @@
 #include "cxx.hpp"
 #include "rust.hpp"
 
-std::vector<cxxtantivy::DocumentInput> dummy_data(uint64_t docs_no = 1,
-                                                  uint64_t props_no = 1) {
-  std::vector<cxxtantivy::DocumentInput> docs;
+std::vector<cxxtantivy::DocumentInput1> dummy_data(uint64_t docs_no = 1,
+                                                   uint64_t props_no = 1) {
+  std::vector<cxxtantivy::DocumentInput1> docs;
   for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
     nlohmann::json data = {};
     nlohmann::json props = {};
@@ -24,9 +24,9 @@ std::vector<cxxtantivy::DocumentInput> dummy_data(uint64_t docs_no = 1,
     data["metadata"]["txid"] = doc_index;
     data["metadata"]["deleted"] = false;
     data["metadata"]["is_node"] = false;
-    cxxtantivy::DocumentInput doc = {.data = cxxtantivy::Element{
-                                         .data = data.dump(),
-                                     }};
+    cxxtantivy::DocumentInput1 doc = {
+        .data = data.dump(),
+    };
     // .gid = doc_index,
     // .txid = doc_index,
     // .deleted = false,

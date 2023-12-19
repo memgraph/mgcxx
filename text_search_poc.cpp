@@ -23,7 +23,7 @@ int main() {
     // add data
     for (const auto &doc : dummy_data(5, 5)) {
       measure_time_diff<int>("add", [&]() {
-        cxxtantivy::add(context, doc);
+        cxxtantivy::add1(context, doc);
         return 0;
       });
     }
