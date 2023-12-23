@@ -6,9 +6,9 @@ use tantivy::aggregation::agg_result::AggregationResults;
 use tantivy::aggregation::AggregationCollector;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
-use tantivy::query::{FuzzyTermQuery, QueryParser};
+use tantivy::query::QueryParser;
 use tantivy::schema::*;
-use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
+use tantivy::{Index, IndexWriter, ReloadPolicy};
 
 // NOTE: Result<T> == Result<T,std::io::Error>.
 #[cxx::bridge(namespace = "cxxtantivy")]
@@ -17,45 +17,39 @@ mod ffi {
         tantivyContext: Box<TantivyContext>,
     }
 
-    // TODO(gitbuda): Having input Element object under ffi is a problem for general solution.
-    // NOTE: This struct is / should be aligned with the schema.
-    struct Element {
-        data: String,
-        // the following are metadata fields required by Memgraph
-        // TODO(gitbuda): Maybe all the following can be JSON and FAST
-        // metadata: String,
-        // gid: u64,
-        // txid: u64,
-        // deleted: bool,
-        // is_node: bool,
-        // props: String, // TODO(gitbuda): Consider using https://cxx.rs/binding/cxxstring.html (c++
-        //                // string on Rust stack).
-        //                // TODO(gitbuda): Consider renanaming to data, because could be used in 2 cases:
-        //                //     * PropertyStore - serialize -> data
-        //                //     * SingleProperty - serialize -> data
-        //                // OPTION A:
-        //                //   * meta: CxxString
-        //                //   * data: CxxString
-    }
-
+    // NOTE: The input struct is / should be aligned with the schema.
+    // NOTE: DocumentInputX (and X suffix in general) is for test/bench purposes.
+    // NOTE: Having a specific input object under ffi is a problem for general solution.
+    // NOTE: The following are metadata fields required by Memgraph
+    //   metadata: String,
+    //   gid: u64,
+    //   txid: u64,
+    //   deleted: bool,
+    //   is_node: bool,
+    // props: String, // TODO(gitbuda): Consider using https://cxx.rs/binding/cxxstring.html (c++
+    //                // string on Rust stack).
     struct DocumentInput1 {
-        // TODO(gitbuda): What's the best type here? String or JSON
+        metadata_and_data: String,
+    }
+    struct DocumentInput2 {
+        gid: u64,
         data: String,
     }
-
+    struct DocumentInput3 {
+        metadata_and_data: String, // TODO(gitbuda): Test CxxString
+    }
     struct SearchInput {
         search_query: String,
         aggregation_query: String,
         // TODO(gitbuda): Add stuff like skip & limit.
     }
 
-    struct SearchOutput {
-        docs: Vec<Element>,
-        // TODO(gitbuda): Add stuff like page (skip, limit).
-    }
-
-    struct AggregateOutput {
+    struct DocumentOutput {
         data: String, // TODO(gitbuda): Here should be Option but it's not supported in cxx.
+    }
+    struct SearchOutput {
+        docs: Vec<DocumentOutput>,
+        // TODO(gitbuda): Add stuff like page (skip, limit).
     }
 
     // NOTE: Since return type is Result<T>, always return Result<Something>.
@@ -63,10 +57,12 @@ mod ffi {
         type TantivyContext;
         fn drop_index(name: &String) -> Result<()>;
         fn init() -> Result<()>;
-        fn create_index(name: &String) -> Result<Context>;
-        fn add1(context: &mut Context, input: &DocumentInput1) -> Result<()>;
+        fn create_index1(name: &String) -> Result<Context>;
+        fn create_index2(name: &String) -> Result<Context>;
+        fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
-        fn aggregate(context: &mut Context, input: &SearchInput) -> Result<AggregateOutput>;
+        fn add1(context: &mut Context, input: &DocumentInput1) -> Result<()>;
+        fn add2(context: &mut Context, input: &DocumentInput2) -> Result<()>;
     }
 }
 
@@ -82,8 +78,8 @@ fn add1(context: &mut ffi::Context, input: &ffi::DocumentInput1) -> Result<(), s
     let index_writer = &mut context.tantivyContext.index_writer;
 
     // let metadata_field = schema.get_field("metadata"). unwrap();
-    // TODO(gitbuda): schema.parse_document > TantivyDocument::parse_json (LATEST)
-    let document = match schema.parse_document(&input.data) {
+    // TODO(gitbuda): schema.parse_document > TantivyDocument::parse_json (LATEST UNSTABLE)
+    let document = match schema.parse_document(&input.metadata_and_data) {
         Ok(json) => json,
         Err(e) => panic!("failed to parser metadata {}", e),
     };
@@ -122,10 +118,14 @@ fn add1(context: &mut ffi::Context, input: &ffi::DocumentInput1) -> Result<(), s
     };
 }
 
+fn add2(context: &mut ffi::Context, input: &ffi::DocumentInput2) -> Result<(), std::io::Error> {
+    Ok(())
+}
+
 fn aggregate(
     context: &mut ffi::Context,
     input: &ffi::SearchInput,
-) -> Result<ffi::AggregateOutput, std::io::Error> {
+) -> Result<ffi::DocumentOutput, std::io::Error> {
     let index = &context.tantivyContext.index;
     let schema = &context.tantivyContext.schema;
     let reader = match index
@@ -159,7 +159,7 @@ fn aggregate(
     let collector = AggregationCollector::from_aggs(agg_req, Default::default());
     let agg_res: AggregationResults = searcher.search(&query, &collector).unwrap();
     let res: Value = serde_json::to_value(agg_res)?;
-    Ok(ffi::AggregateOutput {
+    Ok(ffi::DocumentOutput {
         data: res.to_string(),
     })
 }
@@ -215,7 +215,7 @@ fn search(
             return Err(Error::new(ErrorKind::Other, "Unable to perform search"));
         }
     };
-    let mut docs: Vec<ffi::Element> = vec![];
+    let mut docs: Vec<ffi::DocumentOutput> = vec![];
     for (_score, doc_address) in top_docs {
         let doc = match reader.searcher().doc(doc_address) {
             Ok(d) => d,
@@ -230,7 +230,7 @@ fn search(
         let metadata = doc.get_first(metadata_field).unwrap().as_json().unwrap();
         let data = doc.get_first(data_field).unwrap().as_json().unwrap();
         let data = schema.to_json(&doc);
-        docs.push(ffi::Element {
+        docs.push(ffi::DocumentOutput {
             data: match to_string(&data) {
                 Ok(s) => s,
                 Err(_e) => {
@@ -274,20 +274,85 @@ fn init() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn create_index(name: &String) -> Result<ffi::Context, std::io::Error> {
+//// CREATE INDEX ////
+
+// TODO(gitbuda): Expose index path to be configurable on the C++ side.
+// TODO(gitbuda): Don't panic because if index can't be created -> just return to the user.
+fn ensure_index_dir_structure(name: &String, schema: &Schema) -> Result<Index, std::io::Error> {
+    let index_path = std::path::Path::new(name);
+    if !index_path.exists() {
+        match std::fs::create_dir(index_path) {
+            Ok(_) => {
+                debug!("{:?} folder created", index_path);
+            }
+            Err(_) => {
+                panic!("Failed to create {:?} folder", index_path);
+            }
+        }
+    }
+    let mmap_directory = MmapDirectory::open(&index_path).unwrap();
+    let index = match Index::open_or_create(mmap_directory, schema.clone()) {
+        Ok(index) => index,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to initialize index -> {}", e),
+            ));
+        }
+    };
+    // NOTE: The following assert is not needed because if the schema is wrong
+    // Index::open_or_create is going to fail.
+    // assert!(index.schema() == schema, "Schema loaded from tantivy_index does NOT match.");
+    // TODO(gitbuda): Implement text search backward compatiblity because of possible schema changes.
+    Ok(index)
+}
+fn create_index_writter(index: &Index) -> Result<IndexWriter, std::io::Error> {
+  let index_writer: IndexWriter = match index.writer(50_000_000) {
+       Ok(writer) => writer,
+       Err(_e) => {
+           // TODO(gitbuda): This message won't be intuitive to the user -> rewrite.
+          return Err(Error::new(ErrorKind::Other, "Unable to initialize writer"));
+       }
+   };
+   Ok(index_writer)
+}
+
+// TODO(gitbuda): Add mappings as a String to create_index.
+fn create_index1(name: &String) -> Result<ffi::Context, std::io::Error> {
     // TODO(gitbuda): Expose elements to configure schema on the C++ side.
     let mut schema_builder = Schema::builder();
     schema_builder.add_json_field("metadata", FAST | STORED);
-    // schema_builder.add_u64_field("gid", FAST | STORED);
-    // schema_builder.add_u64_field("txid", FAST | STORED);
-    // schema_builder.add_bool_field("deleted", FAST | STORED);
-    // schema_builder.add_bool_field("is_node", FAST | STORED);
 
-    // NOTE: TEXT is required to be able to search here
+    // NOTE: TEXT is required to be able to search here.
     // TODO(gitbuda): Test what's the tradeoff between searching STRING vs JSON TEXT, how does the
     // query look like?
     // TODO(gitbuda): Benchmark SLOW vs FAST on data, consider this making the configurable by the
     // user -> what's the tradeoff?
+    let x = schema_builder.add_json_field("data", STORED | TEXT | FAST);
+    // TODO(gitbuda): if bla is not specified here, bla doesn't get returned
+    // schema_builder.add_text_field("bla", STORED | TEXT | FAST);
+    let schema = schema_builder.build();
+    let index = ensure_index_dir_structure(name, &schema)?;
+    let index_writer = create_index_writter(&index)?;
+
+    Ok(ffi::Context {
+        tantivyContext: Box::new(TantivyContext {
+            schema,
+            index,
+            index_writer,
+        }),
+    })
+}
+
+// TODO(gitbuda): Test what's the tradeoff between searching STRING vs JSON TEXT, how does the
+// query look like?
+// TODO(gitbuda): Benchmark SLOW vs FAST on data, consider this making the configurable by the
+// user -> what's the tradeoff?
+fn create_index2(name: &String) -> Result<ffi::Context, std::io::Error> {
+    // TODO(gitbuda): Expose elements to configure schema on the C++ side.
+    let mut schema_builder = Schema::builder();
+    schema_builder.add_u64_field("gid", FAST | STORED);
+    // NOTE: TEXT is required to be able to search here
     let x = schema_builder.add_json_field("data", STORED | TEXT | FAST);
     // TODO(gitbuda): if bla is not specified here, bla doesn't get returned
     // schema_builder.add_text_field("bla", STORED | TEXT | FAST);

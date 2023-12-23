@@ -18,11 +18,11 @@ int main() {
 
     // init index
     cxxtantivy::drop_index("tantivy_index_poc");
-    auto context = cxxtantivy::create_index("tantivy_index_poc");
+    auto context = cxxtantivy::create_index1("tantivy_index_poc");
 
     // add data
     for (const auto &doc : dummy_data(5, 5)) {
-      std::cout << doc.data << std::endl;
+      std::cout << doc.metadata_and_data << std::endl;
       measure_time_diff<int>("add", [&]() {
         cxxtantivy::add1(context, doc);
         return 0;

@@ -25,7 +25,7 @@ std::vector<cxxtantivy::DocumentInput1> dummy_data(uint64_t docs_no = 1,
     data["metadata"]["deleted"] = false;
     data["metadata"]["is_node"] = false;
     cxxtantivy::DocumentInput1 doc = {
-        .data = data.dump(),
+        .metadata_and_data = data.dump(),
     };
     // .gid = doc_index,
     // .txid = doc_index,
@@ -37,7 +37,8 @@ std::vector<cxxtantivy::DocumentInput1> dummy_data(uint64_t docs_no = 1,
   return docs;
 }
 
-std::ostream &operator<<(std::ostream &os, const cxxtantivy::Element &element) {
+std::ostream &operator<<(std::ostream &os,
+                         const cxxtantivy::DocumentOutput &element) {
   os << element.data;
   // os << "GID: " << element.gid << "; TXID: " << element.txid
   //    << "; DELETED: " << element.deleted << "; IS_NODE: " << element.is_node

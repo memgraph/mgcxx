@@ -25,7 +25,7 @@ public:
     }
     auto index_name = fmt::format("index{}", cnt.load());
     context = std::make_unique<cxxtantivy::Context>(
-        cxxtantivy::create_index(index_name));
+        cxxtantivy::create_index1(index_name));
   }
   void TearDown(const ::benchmark::State &state) {
     // TODO(gitbuda): Drop all generate index folders.
