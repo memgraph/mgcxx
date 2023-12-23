@@ -16,9 +16,9 @@ std::vector<cxxtantivy::DocumentInput1> dummy_data(uint64_t docs_no = 1,
     nlohmann::json props = {};
     for (uint64_t prop_index = 0; prop_index < props_no; ++prop_index) {
       props[fmt::format("key{}", prop_index)] =
-          fmt::format("value{}", prop_index);
+          fmt::format("value{} is AWESOME", prop_index);
     }
-    data["props"] = props;
+    data["data"] = props;
     data["metadata"] = {};
     data["metadata"]["gid"] = doc_index;
     data["metadata"]["txid"] = doc_index;

@@ -6,7 +6,7 @@ use tantivy::aggregation::agg_result::AggregationResults;
 use tantivy::aggregation::AggregationCollector;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
-use tantivy::query::QueryParser;
+use tantivy::query::{FuzzyTermQuery, QueryParser};
 use tantivy::schema::*;
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
 
@@ -142,8 +142,8 @@ fn aggregate(
         }
     };
 
-    let props_field = schema.get_field("props").unwrap();
-    let query_parser = QueryParser::for_index(index, vec![props_field]);
+    let data_field = schema.get_field("data").unwrap();
+    let query_parser = QueryParser::for_index(index, vec![data_field]);
     let query = match query_parser.parse_query(&input.search_query) {
         Ok(q) => q,
         Err(e) => {
@@ -190,9 +190,12 @@ fn search(
     // let txid_field = schema.get_field("txid").unwrap();
     // let deleted_field = schema.get_field("deleted").unwrap();
     // let is_node_field = schema.get_field("is_node").unwrap();
-    let props_field = schema.get_field("props").unwrap();
+    let data_field = schema.get_field("data").unwrap();
 
-    let query_parser = QueryParser::for_index(index, vec![props_field]);
+    // TODO(gitbuda): Test/figure_out how to get all properties from the schema.
+    // let fields = schema.fields();
+
+    let query_parser = QueryParser::for_index(index, vec![data_field]);
     let query = match query_parser.parse_query(&input.search_query) {
         Ok(q) => q,
         Err(e) => {
@@ -202,6 +205,9 @@ fn search(
             ));
         }
     };
+    // TODO(gitbuda): Test fuzzy searches
+    // let term = Term::from_field_text(data_field, &input.search_query);
+    // let query = FuzzyTermQuery::new(term, 2, true);
 
     let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(10)) {
         Ok(docs) => docs,
@@ -222,7 +228,7 @@ fn search(
         // let deleted = doc.get_first(deleted_field).unwrap().as_bool().unwrap();
         // let is_node = doc.get_first(is_node_field).unwrap().as_bool().unwrap();
         let metadata = doc.get_first(metadata_field).unwrap().as_json().unwrap();
-        let props = doc.get_first(props_field).unwrap().as_json().unwrap();
+        let data = doc.get_first(data_field).unwrap().as_json().unwrap();
         let data = schema.to_json(&doc);
         docs.push(ffi::Element {
             data: match to_string(&data) {
@@ -280,9 +286,11 @@ fn create_index(name: &String) -> Result<ffi::Context, std::io::Error> {
     // NOTE: TEXT is required to be able to search here
     // TODO(gitbuda): Test what's the tradeoff between searching STRING vs JSON TEXT, how does the
     // query look like?
-    // TODO(gitbuda): Benchmark SLOW vs FAST on props, consider this making the configurable by the
+    // TODO(gitbuda): Benchmark SLOW vs FAST on data, consider this making the configurable by the
     // user -> what's the tradeoff?
-    schema_builder.add_json_field("props", STORED | TEXT | FAST);
+    let x = schema_builder.add_json_field("data", STORED | TEXT | FAST);
+    // TODO(gitbuda): if bla is not specified here, bla doesn't get returned
+    // schema_builder.add_text_field("bla", STORED | TEXT | FAST);
     let schema = schema_builder.build();
 
     // TODO(gitbuda): Expose index path to be configurable on the C++ side.
