@@ -11,14 +11,15 @@ project(cxxtantivy)
 file(DOWNLOAD https://raw.githubusercontent.com/memgraph/cmake/main/modules/external-fmt.cmake
      ${CMAKE_BINARY_DIR}/external-fmt.cmake)
 include(${CMAKE_BINARY_DIR}/external-fmt.cmake)
-
 file(DOWNLOAD https://raw.githubusercontent.com/memgraph/cmake/main/modules/fetch-nlohmann.cmake
      ${CMAKE_BINARY_DIR}/fetch-nlohmann.cmake)
 include(${CMAKE_BINARY_DIR}/fetch-nlohmann.cmake)
-
 file(DOWNLOAD https://raw.githubusercontent.com/memgraph/cmake/main/modules/fetch-gbenchmark.cmake
      ${CMAKE_BINARY_DIR}/fetch-gbenchmark.cmake)
 include(${CMAKE_BINARY_DIR}/fetch-gbenchmark.cmake)
+file(DOWNLOAD https://raw.githubusercontent.com/memgraph/cmake/main/modules/fetch-gtest.cmake
+     ${CMAKE_BINARY_DIR}/fetch-gtest.cmake)
+include(${CMAKE_BINARY_DIR}/fetch-gtest.cmake)
 
 # TODO(gitbuda): Make LTO work on Mac because ldd (consider options and default).
 message(STATUS "CMake build type: ${CMAKE_BUILD_TYPE}")
@@ -47,3 +48,8 @@ target_link_libraries(text_search_poc PRIVATE fmtlib_static nlohmann_json::nlohm
 
 add_executable(text_search_bench text_search_bench.cpp)
 target_link_libraries(text_search_bench PRIVATE fmtlib_static benchmark::benchmark nlohmann_json::nlohmann_json cxxtantivy_rust)
+
+enable_testing()
+add_executable(text_search_test text_search_test.cpp)
+target_link_libraries(text_search_test gtest gtest_main)
+add_test(NAME text_search_test COMMAND text_search_test)
