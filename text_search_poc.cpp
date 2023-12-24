@@ -21,7 +21,7 @@ int main() {
     auto context = cxxtantivy::create_index1("tantivy_index_poc");
 
     // add data
-    for (const auto &doc : dummy_data(5, 5)) {
+    for (const auto &doc : dummy_data1(5, 5)) {
       std::cout << doc.metadata_and_data << std::endl;
       measure_time_diff<int>("add", [&]() {
         cxxtantivy::add1(context, doc);
@@ -32,7 +32,7 @@ int main() {
     // search example
     // cxxtantivy::SearchInput search_input = {.search_query = "key1:value1"};
     cxxtantivy::SearchInput search_input = {.search_query =
-                                                "key1:AWESOME AND key2:AWESOM"};
+                                                "data.key1:AWESOME"};
     auto result1 = measure_time_diff<cxxtantivy::SearchOutput>(
         "search1", [&]() { return cxxtantivy::search(context, search_input); });
     for (const auto &doc : result1.docs) {
