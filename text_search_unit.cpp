@@ -1,24 +1,12 @@
-#include <iostream>
-#include <vector>
+#include "gtest/gtest.h"
 
 #include "common.hpp"
 
-// TODO(gitbuda): Add benchmark (add|retrieve simple|complex, filtering,
-// aggregations).
-// TODO(gitbuda): init -> create_index + add the ability to inject schema.
-// TODO(gitbuda): Move includes to cxxtantivy/rust|cxx.hpp (consider
-// mgcxxtantivy because of ffi).
-// TODO(gitbuda): cxxtantivy::function but rust::Error -> unify.
-
-int main() {
+TEST(text_search_test_case, simple_test) {
   try {
-    // init tantivy engine (actually logging setup, should be called once per
-    // process, early)
-    cxxtantivy::init();
-
     // init index
-    cxxtantivy::drop_index("tantivy_index_poc");
-    auto context = cxxtantivy::create_index1("tantivy_index_poc");
+    cxxtantivy::drop_index("tantivy_index_simple_test");
+    auto context = cxxtantivy::create_index1("tantivy_index_simple_test");
 
     // add data
     for (const auto &doc : dummy_data1(5, 5)) {
@@ -30,11 +18,11 @@ int main() {
     }
 
     // search example
-    // cxxtantivy::SearchInput search_input = {.search_query = "key1:value1"};
     cxxtantivy::SearchInput search_input = {.search_query =
                                                 "data.key1:AWESOME"};
     auto result1 = measure_time_diff<cxxtantivy::SearchOutput>(
         "search1", [&]() { return cxxtantivy::search(context, search_input); });
+    ASSERT_EQ(result1.docs.size(), 5);
     for (const auto &doc : result1.docs) {
       std::cout << doc << std::endl;
     }
@@ -47,17 +35,27 @@ int main() {
 
     // aggregation example
     nlohmann::json aggregation_query = {};
-    aggregation_query["count"]["value_count"]["field"] = "txid";
+    aggregation_query["count"]["value_count"]["field"] = "metadata.txid";
     cxxtantivy::SearchInput aggregate = {
-        .search_query = "value12",
+        .search_query = "data.key1:AWESOME",
         .aggregation_query = aggregation_query.dump(),
     };
     auto aggregation_result =
         nlohmann::json::parse(cxxtantivy::aggregate(context, aggregate).data);
+    EXPECT_NEAR(aggregation_result["count"]["value"], 5, 1e-6);
     std::cout << aggregation_result << std::endl;
 
   } catch (const rust::Error &error) {
     std::cout << error.what() << std::endl;
+    FAIL();
   }
-  return 0;
+}
+
+// TODO(gitbuda): Make a gtest main lib and link agains other test binaries.
+int main(int argc, char *argv[]) {
+  // init tantivy engine (actually logging setup, should be called once per
+  // process, early)
+  cxxtantivy::init();
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

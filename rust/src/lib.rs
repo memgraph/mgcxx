@@ -377,8 +377,8 @@ fn create_index_writter(index: &Index) -> Result<IndexWriter, std::io::Error> {
 
 fn create_index1(name: &String) -> Result<ffi::Context, std::io::Error> {
     let mut schema_builder = Schema::builder();
-    schema_builder.add_json_field("metadata", TEXT | FAST);
-    let x = schema_builder.add_json_field("data", STORED | TEXT | FAST);
+    schema_builder.add_json_field("metadata", STORED | TEXT | FAST);
+    schema_builder.add_json_field("data", STORED | TEXT | FAST);
     let schema = schema_builder.build();
     let index = ensure_index_dir_structure(name, &schema)?;
     let index_writer = create_index_writter(&index)?;
