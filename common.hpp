@@ -8,9 +8,18 @@
 #include "cxx.hpp"
 #include "rust.hpp"
 
-std::vector<cxxtantivy::DocumentInput1> dummy_data1(uint64_t docs_no = 1,
-                                                    uint64_t props_no = 1) {
-  std::vector<cxxtantivy::DocumentInput1> docs;
+nlohmann::json dummy_mappings1() {
+  nlohmann::json mappings = {};
+  mappings["properties"] = {};
+  mappings["properties"]["metadata"] = {
+      {"type", "json"}, {"fast", true}, {"stored", true}, {"text", true}};
+  mappings["properties"]["data"] = {
+      {"type", "json"}, {"fast", true}, {"stored", true}, {"text", true}};
+  return mappings;
+}
+std::vector<cxxtantivy::DocumentInput> dummy_data1(uint64_t docs_no = 1,
+                                                   uint64_t props_no = 1) {
+  std::vector<cxxtantivy::DocumentInput> docs;
   for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
     nlohmann::json data = {};
     nlohmann::json props = {};
@@ -24,26 +33,38 @@ std::vector<cxxtantivy::DocumentInput1> dummy_data1(uint64_t docs_no = 1,
     data["metadata"]["txid"] = doc_index;
     data["metadata"]["deleted"] = false;
     data["metadata"]["is_node"] = false;
-    cxxtantivy::DocumentInput1 doc = {
-        .metadata_and_data = data.dump(),
+    cxxtantivy::DocumentInput doc = {
+        .data = data.dump(),
     };
     docs.push_back(doc);
   }
   return docs;
 }
 
-std::vector<cxxtantivy::DocumentInput2> dummy_data2(uint64_t docs_no = 1,
-                                                    uint64_t props_no = 1) {
-  std::vector<cxxtantivy::DocumentInput2> docs;
+nlohmann::json dummy_mappings2() {
+  nlohmann::json mappings = {};
+  mappings["properties"] = {};
+  mappings["properties"]["gid"] = {
+      {"type", "u64"}, {"fast", true}, {"stored", true}, {"indexed", true}};
+  // TODO(gitbuda): Be careful, here is just a plain text use JSON instead.
+  mappings["properties"]["data"] = {
+      {"type", "json"}, {"fast", true}, {"stored", true}, {"text", true}};
+  return mappings;
+}
+std::vector<cxxtantivy::DocumentInput> dummy_data2(uint64_t docs_no = 1,
+                                                   uint64_t props_no = 1) {
+  std::vector<cxxtantivy::DocumentInput> docs;
   for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
+    nlohmann::json data = {};
+    data["gid"] = doc_index;
     nlohmann::json props = {};
     for (uint64_t prop_index = 0; prop_index < props_no; ++prop_index) {
       props[fmt::format("key{}", prop_index)] =
           fmt::format("value{} is AWESOME", prop_index);
     }
-    cxxtantivy::DocumentInput2 doc = {
-        .gid = doc_index,
-        .data = props.dump(),
+    data["data"] = props;
+    cxxtantivy::DocumentInput doc = {
+        .data = data.dump(),
     };
     docs.push_back(doc);
   }

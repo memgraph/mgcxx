@@ -8,7 +8,7 @@ use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
-use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
+use tantivy::{Index, IndexWriter, ReloadPolicy};
 
 // NOTE: Result<T> == Result<T,std::io::Error>.
 #[cxx::bridge(namespace = "cxxtantivy")]
@@ -17,9 +17,17 @@ mod ffi {
         tantivyContext: Box<TantivyContext>,
     }
 
+    struct IndexConfig {
+        mappings: String,
+    }
+
+    struct DocumentInput {
+        /// JSON encoded string with data.
+        /// Mappings inside IndexConfig defines how data will be handeled.
+        data: String,
+    }
     // NOTE: The input struct is / should be aligned with the schema.
-    // NOTE: DocumentInputX (and X suffix in general) is for test/bench purposes.
-    // NOTE: Having a specific input object under ffi is a problem for general solution.
+    // NOTE: Having a specific input object under ffi is a challange for general solution.
     // NOTE: The following are metadata fields required by Memgraph
     //   metadata: String,
     //   gid: u64,
@@ -28,16 +36,7 @@ mod ffi {
     //   is_node: bool,
     // props: String, // TODO(gitbuda): Consider using https://cxx.rs/binding/cxxstring.html (c++
     //                // string on Rust stack).
-    struct DocumentInput1 {
-        metadata_and_data: String,
-    }
-    struct DocumentInput2 {
-        gid: u64,
-        data: String,
-    }
-    struct DocumentInput3 {
-        metadata_and_data: String, // TODO(gitbuda): Test CxxString
-    }
+
     struct SearchInput {
         search_query: String,
         aggregation_query: String,
@@ -45,7 +44,7 @@ mod ffi {
     }
 
     struct DocumentOutput {
-        data: String, // TODO(gitbuda): Here should be Option but it's not supported in cxx.
+        data: String, // NOTE: Here should probably be Option but it's not supported in cxx.
     }
     struct SearchOutput {
         docs: Vec<DocumentOutput>,
@@ -57,20 +56,17 @@ mod ffi {
         type TantivyContext;
         fn drop_index(name: &String) -> Result<()>;
         fn init() -> Result<()>;
-        fn create_index1(name: &String) -> Result<Context>;
-        fn create_index2(name: &String) -> Result<Context>;
+        fn create_index(name: &String, config: &IndexConfig) -> Result<Context>;
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn find(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
-        fn add1(context: &mut Context, input: &DocumentInput1, skip_commit: bool) -> Result<()>;
-        fn add2(context: &mut Context, input: &DocumentInput2, skip_commit: bool) -> Result<()>;
+        fn add(context: &mut Context, input: &DocumentInput, skip_commit: bool) -> Result<()>;
         fn commit(context: &mut Context) -> Result<()>;
         fn rollback(context: &mut Context) -> Result<()>;
     }
 }
 
 pub struct TantivyContext {
-    // TODO(gitbuda): Consider prefetching schema fields into context (measure first).
     pub schema: Schema,
     pub index: Index,
     pub index_writer: IndexWriter,
@@ -132,31 +128,18 @@ fn add_document(
     }
 }
 
-fn add1(
+fn add(
     context: &mut ffi::Context,
-    input: &ffi::DocumentInput1,
+    input: &ffi::DocumentInput,
     skip_commit: bool,
 ) -> Result<(), std::io::Error> {
     let schema = &context.tantivyContext.schema;
     let index_writer = &mut context.tantivyContext.index_writer;
     // TODO(gitbuda): schema.parse_document > TantivyDocument::parse_json (LATEST UNSTABLE)
-    let document = match schema.parse_document(&input.metadata_and_data) {
+    let document = match schema.parse_document(&input.data) {
         Ok(json) => json,
         Err(e) => panic!("failed to parser metadata {}", e),
     };
-    add_document(index_writer, document, skip_commit)
-}
-
-fn add2(
-    context: &mut ffi::Context,
-    input: &ffi::DocumentInput2,
-    skip_commit: bool,
-) -> Result<(), std::io::Error> {
-    let schema = &context.tantivyContext.schema;
-    let index_writer = &mut context.tantivyContext.index_writer;
-    let gid_field = schema.get_field("gid").unwrap();
-    let data_field = schema.get_field("data").unwrap();
-    let document = doc!(gid_field => input.gid, data_field => input.data.clone());
     add_document(index_writer, document, skip_commit)
 }
 
@@ -179,7 +162,6 @@ fn aggregate(
             ));
         }
     };
-
     let data_field = schema.get_field("data").unwrap();
     let query_parser = QueryParser::for_index(index, vec![data_field]);
     let query = match query_parser.parse_query(&input.search_query) {
@@ -191,7 +173,6 @@ fn aggregate(
             ));
         }
     };
-
     let searcher = reader.searcher();
     let agg_req: Aggregations = serde_json::from_str(&input.aggregation_query)?;
     let collector = AggregationCollector::from_aggs(agg_req, Default::default());
@@ -247,9 +228,7 @@ fn find(
                 panic!("Unable to find document returned by the search query.");
             }
         };
-        // let data = doc.get_first(data_field).unwrap().as_json().unwrap();
-        let data = doc.get_first(data_field).unwrap().as_text().unwrap();
-        // let data = schema.to_json(&doc);
+        let data = doc.get_first(data_field).unwrap().as_json().unwrap();
         docs.push(ffi::DocumentOutput {
             data: match to_string(&data) {
                 Ok(s) => s,
@@ -356,7 +335,6 @@ fn init() -> Result<(), std::io::Error> {
 
 //// CREATE INDEX ////
 // NOTE: TEXT is required to be able to search.
-// TODO(gitbuda): Add mappings as a String to create_index.
 // TODO(gitbuda): Expose index path to be configurable on the C++ side.
 // TODO(gitbuda): Don't panic because if index can't be created -> just return to the user.
 // TODO(gitbuda): Test what's the tradeoff between searching STRING vs JSON TEXT, how does the
@@ -392,6 +370,7 @@ fn ensure_index_dir_structure(name: &String, schema: &Schema) -> Result<Index, s
     // TODO(gitbuda): Implement text search backward compatiblity because of possible schema changes.
     Ok(index)
 }
+
 fn create_index_writter(index: &Index) -> Result<IndexWriter, std::io::Error> {
     let index_writer: IndexWriter = match index.writer(50_000_000) {
         Ok(writer) => writer,
@@ -403,28 +382,159 @@ fn create_index_writter(index: &Index) -> Result<IndexWriter, std::io::Error> {
     Ok(index_writer)
 }
 
-fn create_index1(name: &String) -> Result<ffi::Context, std::io::Error> {
+// TODO(gitbuda): Implement full range of extract_schema options.
+fn extract_schema(mappings: &serde_json::Map<String, Value>) -> Result<Schema, std::io::Error> {
     let mut schema_builder = Schema::builder();
-    schema_builder.add_json_field("metadata", STORED | TEXT | FAST);
-    schema_builder.add_json_field("data", STORED | TEXT | FAST);
+    if let Some(properties) = mappings.get("properties") {
+        if let Some(properties_map) = properties.as_object() {
+            for (field_name, value) in properties_map {
+                let field_type = match value.get("type") {
+                    Some(r) => match r.as_str() {
+                        Some(s) => s,
+                        None => {
+                            return Err(Error::new(
+                                ErrorKind::Other,
+                                "field type should be a string",
+                            ));
+                        }
+                    },
+                    None => {
+                        return Err(Error::new(ErrorKind::Other, "field should have a type"));
+                    }
+                };
+                let is_stored = match value.get("stored") {
+                    Some(r) => match r.as_bool() {
+                        Some(s) => s,
+                        None => {
+                            return Err(Error::new(
+                                ErrorKind::Other,
+                                "field -> stored should be bool",
+                            ));
+                        }
+                    },
+                    None => false,
+                };
+                let is_fast = match value.get("fast") {
+                    Some(r) => match r.as_bool() {
+                        Some(s) => s,
+                        None => {
+                            return Err(Error::new(
+                                ErrorKind::Other,
+                                "field -> fast should be bool",
+                            ));
+                        }
+                    },
+                    None => false,
+                };
+                let is_text = match value.get("text") {
+                    Some(r) => match r.as_bool() {
+                        Some(s) => s,
+                        None => {
+                            return Err(Error::new(
+                                ErrorKind::Other,
+                                "field -> text should be bool",
+                            ));
+                        }
+                    },
+                    None => false,
+                };
+                let is_indexed = match value.get("indexed") {
+                    Some(r) => match r.as_bool() {
+                        Some(s) => s,
+                        None => {
+                            return Err(Error::new(
+                                ErrorKind::Other,
+                                "field -> indexed should be bool",
+                            ));
+                        }
+                    },
+                    None => false,
+                };
+                match field_type {
+                    "u64" => {
+                        let mut options = NumericOptions::default();
+                        if is_stored {
+                            options = options.set_stored();
+                        }
+                        if is_fast {
+                            options = options.set_fast();
+                        }
+                        if is_indexed {
+                            options = options.set_indexed();
+                        }
+                        schema_builder.add_u64_field(field_name, options);
+                    }
+                    "text" => {
+                        let mut options = TextOptions::default();
+                        if is_stored {
+                            options = options.set_stored();
+                        }
+                        if is_fast {
+                            options = options.set_fast(None);
+                        }
+                        if is_text {
+                            options = options | TEXT
+                        }
+                        schema_builder.add_text_field(field_name, options);
+                    }
+                    "json" => {
+                        let mut options = JsonObjectOptions::default();
+                        if is_stored {
+                            options = options.set_stored();
+                        }
+                        if is_fast {
+                            options = options.set_fast(None);
+                        }
+                        if is_text {
+                            options = options | TEXT
+                        }
+                        schema_builder.add_json_field(field_name, options);
+                    }
+                    "bool" => {
+                        let mut options = NumericOptions::default();
+                        if is_stored {
+                            options = options.set_stored();
+                        }
+                        if is_fast {
+                            options = options.set_fast();
+                        }
+                        if is_indexed {
+                            options = options.set_indexed();
+                        }
+                        schema_builder.add_bool_field(field_name, options);
+                    }
+                    _ => {
+                        return Err(Error::new(ErrorKind::Other, "unknown field type"));
+                    }
+                }
+            }
+        } else {
+            return Err(Error::new(
+                ErrorKind::Other,
+                "mappings has to contain properties",
+            ));
+        }
+    } else {
+        return Err(Error::new(
+            ErrorKind::Other,
+            "mappings has to contain properties",
+        ));
+    }
     let schema = schema_builder.build();
-    let index = ensure_index_dir_structure(name, &schema)?;
-    let index_writer = create_index_writter(&index)?;
-    Ok(ffi::Context {
-        tantivyContext: Box::new(TantivyContext {
-            schema,
-            index,
-            index_writer,
-        }),
-    })
+    Ok(schema)
 }
 
-fn create_index2(name: &String) -> Result<ffi::Context, std::io::Error> {
-    let mut schema_builder = Schema::builder();
-    schema_builder.add_u64_field("gid", FAST | STORED | INDEXED);
-    // TODO(gitbuda): Be careful, here is just a plain text use JSON instead.
-    schema_builder.add_text_field("data", STORED | TEXT | FAST);
-    let schema = schema_builder.build();
+fn create_index(name: &String, config: &ffi::IndexConfig) -> Result<ffi::Context, std::io::Error> {
+    let mappings = match serde_json::from_str::<serde_json::Map<String, Value>>(&config.mappings) {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to parse mappings: {}", e),
+            ));
+        }
+    };
+    let schema = extract_schema(&mappings)?;
     let index = ensure_index_dir_structure(name, &schema)?;
     let index_writer = create_index_writter(&index)?;
     Ok(ffi::Context {

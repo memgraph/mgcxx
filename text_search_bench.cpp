@@ -18,8 +18,10 @@ public:
       global_init_done = true;
     }
     auto index_name = fmt::format("index{}", cnt.load());
+    auto index_config =
+        cxxtantivy::IndexConfig{.mappings = dummy_mappings1().dump()};
     context = std::make_unique<cxxtantivy::Context>(
-        cxxtantivy::create_index1(index_name));
+        cxxtantivy::create_index(index_name, index_config));
   }
   void TearDown(const ::benchmark::State &state) {
     // TODO(gitbuda): Drop all generate index folders.
@@ -38,8 +40,10 @@ public:
       global_init_done = true;
     }
     auto index_name = fmt::format("index{}", cnt.load());
+    auto index_config =
+        cxxtantivy::IndexConfig{.mappings = dummy_mappings2().dump()};
     context = std::make_unique<cxxtantivy::Context>(
-        cxxtantivy::create_index2(index_name));
+        cxxtantivy::create_index(index_name, index_config));
   }
   void TearDown(const ::benchmark::State &state) {
     // TODO(gitbuda): Drop all generate index folders.
@@ -58,7 +62,7 @@ BENCHMARK_DEFINE_F(MyFixture1, BM_AddSimpleEagerCommit)
 
   for (auto _ : state) {
     for (const auto &doc : generated_data) {
-      cxxtantivy::add1(*context, doc, false);
+      cxxtantivy::add(*context, doc, false);
     }
   }
 }
@@ -71,7 +75,7 @@ BENCHMARK_DEFINE_F(MyFixture1, BM_AddSimpleLazyCommit)
 
   for (auto _ : state) {
     for (const auto &doc : generated_data) {
-      cxxtantivy::add1(*context, doc, true);
+      cxxtantivy::add(*context, doc, true);
     }
   }
   cxxtantivy::commit(*context);
@@ -81,7 +85,7 @@ BENCHMARK_DEFINE_F(MyFixture1, BM_BenchLookup)(benchmark::State &state) {
   auto repeat_no = state.range(0);
   auto generated_data = dummy_data1(repeat_no, 5);
   for (const auto &doc : generated_data) {
-    cxxtantivy::add1(*context, doc, true);
+    cxxtantivy::add(*context, doc, true);
   }
   cxxtantivy::commit(*context);
 
@@ -99,7 +103,7 @@ BENCHMARK_DEFINE_F(MyFixture2, BM_BenchLookup)(benchmark::State &state) {
   auto repeat_no = state.range(0);
   auto generated_data = dummy_data2(repeat_no, 5);
   for (const auto &doc : generated_data) {
-    cxxtantivy::add2(*context, doc, true);
+    cxxtantivy::add(*context, doc, true);
   }
   cxxtantivy::commit(*context);
 
