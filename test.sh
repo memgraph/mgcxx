@@ -1,8 +1,15 @@
 #!/bin/bash -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR/build"
 export RUST_LOG=warn
 
+cd "$SCRIPT_DIR"
+# TODO(gitbuda): Add clang-format call here.
+
+cd "$SCRIPT_DIR/rust"
+cargo fmt
+
+cd "$SCRIPT_DIR/build"
+rm -rf index*
 cmake
 make -j8
 ./text_search_unit

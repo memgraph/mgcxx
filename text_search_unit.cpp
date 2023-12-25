@@ -10,7 +10,6 @@ TEST(text_search_test_case, simple_test1) {
         cxxtantivy::IndexConfig{.mappings = dummy_mappings1().dump()};
     auto context = cxxtantivy::create_index(index_name, index_config);
 
-    // add data
     for (const auto &doc : dummy_data1(5, 5)) {
       std::cout << doc.data << std::endl;
       measure_time_diff<int>("add", [&]() {
@@ -19,7 +18,6 @@ TEST(text_search_test_case, simple_test1) {
       });
     }
 
-    // search example
     cxxtantivy::SearchInput search_input = {.search_query =
                                                 "data.key1:AWESOME"};
     auto result1 = measure_time_diff<cxxtantivy::SearchOutput>(
@@ -28,14 +26,12 @@ TEST(text_search_test_case, simple_test1) {
     for (const auto &doc : result1.docs) {
       std::cout << doc << std::endl;
     }
-
     for (uint64_t i = 0; i < 10; ++i) {
       auto result = measure_time_diff<cxxtantivy::SearchOutput>(
           fmt::format("search{}", i),
           [&]() { return cxxtantivy::search(context, search_input); });
     }
 
-    // aggregation example
     nlohmann::json aggregation_query = {};
     aggregation_query["count"]["value_count"]["field"] = "metadata.txid";
     cxxtantivy::SearchInput aggregate = {
@@ -46,7 +42,6 @@ TEST(text_search_test_case, simple_test1) {
         nlohmann::json::parse(cxxtantivy::aggregate(context, aggregate).data);
     EXPECT_NEAR(aggregation_result["count"]["value"], 5, 1e-6);
     std::cout << aggregation_result << std::endl;
-
   } catch (const rust::Error &error) {
     std::cout << error.what() << std::endl;
     FAIL();

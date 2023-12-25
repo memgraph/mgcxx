@@ -46,7 +46,6 @@ nlohmann::json dummy_mappings2() {
   mappings["properties"] = {};
   mappings["properties"]["gid"] = {
       {"type", "u64"}, {"fast", true}, {"stored", true}, {"indexed", true}};
-  // TODO(gitbuda): Be careful, here is just a plain text use JSON instead.
   mappings["properties"]["data"] = {
       {"type", "json"}, {"fast", true}, {"stored", true}, {"text", true}};
   return mappings;

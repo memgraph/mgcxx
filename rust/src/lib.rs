@@ -34,8 +34,7 @@ mod ffi {
     //   txid: u64,
     //   deleted: bool,
     //   is_node: bool,
-    // props: String, // TODO(gitbuda): Consider using https://cxx.rs/binding/cxxstring.html (c++
-    //                // string on Rust stack).
+    // props: String, // TODO(gitbuda): Consider using https://cxx.rs/binding/cxxstring.html
 
     struct SearchInput {
         search_query: String,
@@ -241,11 +240,6 @@ fn find(
     Ok(ffi::SearchOutput { docs })
 }
 
-// TODO(gitbuda): Test/figure_out how to get all properties from the schema.
-// let fields = schema.fields();
-// TODO(gitbuda): Test fuzzy searches
-// let term = Term::from_field_text(data_field, &input.search_query);
-// let query = FuzzyTermQuery::new(term, 2, true);
 fn search(
     context: &mut ffi::Context,
     input: &ffi::SearchInput,
@@ -333,15 +327,6 @@ fn init() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-//// CREATE INDEX ////
-// NOTE: TEXT is required to be able to search.
-// TODO(gitbuda): Expose index path to be configurable on the C++ side.
-// TODO(gitbuda): Don't panic because if index can't be created -> just return to the user.
-// TODO(gitbuda): Test what's the tradeoff between searching STRING vs JSON TEXT, how does the
-// query look like?
-// TODO(gitbuda): Benchmark SLOW vs FAST on data, consider this making the configurable by the
-// user -> what's the tradeoff?
-
 fn ensure_index_dir_structure(name: &String, schema: &Schema) -> Result<Index, std::io::Error> {
     let index_path = std::path::Path::new(name);
     if !index_path.exists() {
@@ -355,6 +340,7 @@ fn ensure_index_dir_structure(name: &String, schema: &Schema) -> Result<Index, s
         }
     }
     let mmap_directory = MmapDirectory::open(&index_path).unwrap();
+    // NOTE: If schema doesn't match, open_or_create is going to return an error.
     let index = match Index::open_or_create(mmap_directory, schema.clone()) {
         Ok(index) => index,
         Err(e) => {
@@ -364,10 +350,6 @@ fn ensure_index_dir_structure(name: &String, schema: &Schema) -> Result<Index, s
             ));
         }
     };
-    // NOTE: The following assert is not needed because if the schema is wrong
-    // Index::open_or_create is going to fail.
-    // assert!(index.schema() == schema, "Schema loaded from tantivy_index does NOT match.");
-    // TODO(gitbuda): Implement text search backward compatiblity because of possible schema changes.
     Ok(index)
 }
 
