@@ -2,17 +2,17 @@
 
 #include "common.hpp"
 
-TEST(text_search_test_case, simple_test) {
+TEST(text_search_test_case, simple_test1) {
   try {
-    // init index
-    cxxtantivy::drop_index("tantivy_index_simple_test");
-    auto context = cxxtantivy::create_index1("tantivy_index_simple_test");
+    // create index
+    cxxtantivy::drop_index("tantivy_index_simple_test1");
+    auto context = cxxtantivy::create_index1("tantivy_index_simple_test1");
 
     // add data
     for (const auto &doc : dummy_data1(5, 5)) {
       std::cout << doc.metadata_and_data << std::endl;
       measure_time_diff<int>("add", [&]() {
-        cxxtantivy::add1(context, doc);
+        cxxtantivy::add1(context, doc, false);
         return 0;
       });
     }
@@ -45,6 +45,34 @@ TEST(text_search_test_case, simple_test) {
     EXPECT_NEAR(aggregation_result["count"]["value"], 5, 1e-6);
     std::cout << aggregation_result << std::endl;
 
+  } catch (const rust::Error &error) {
+    std::cout << error.what() << std::endl;
+    FAIL();
+  }
+}
+
+TEST(text_search_test_case, simple_test2) {
+  try {
+    // create index
+    cxxtantivy::drop_index("tantivy_index_simple_test2");
+    auto context = cxxtantivy::create_index2("tantivy_index_simple_test2");
+
+    // add data
+    for (const auto &doc : dummy_data2(2, 1)) {
+      measure_time_diff<int>("add", [&]() {
+        cxxtantivy::add2(context, doc, false);
+        return 0;
+      });
+    }
+
+    // search
+    cxxtantivy::SearchInput search_input = {.search_query =
+                                                fmt::format("{}", 0)};
+    auto result = cxxtantivy::find(context, search_input);
+    ASSERT_EQ(result.docs.size(), 1);
+    for (const auto &doc : result.docs) {
+      std::cout << doc << std::endl;
+    }
   } catch (const rust::Error &error) {
     std::cout << error.what() << std::endl;
     FAIL();

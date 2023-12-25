@@ -62,8 +62,10 @@ mod ffi {
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn find(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
-        fn add1(context: &mut Context, input: &DocumentInput1) -> Result<()>;
-        fn add2(context: &mut Context, input: &DocumentInput2) -> Result<()>;
+        fn add1(context: &mut Context, input: &DocumentInput1, skip_commit: bool) -> Result<()>;
+        fn add2(context: &mut Context, input: &DocumentInput2, skip_commit: bool) -> Result<()>;
+        fn commit(context: &mut Context) -> Result<()>;
+        fn rollback(context: &mut Context) -> Result<()>;
     }
 }
 
@@ -74,7 +76,67 @@ pub struct TantivyContext {
     pub index_writer: IndexWriter,
 }
 
-fn add1(context: &mut ffi::Context, input: &ffi::DocumentInput1) -> Result<(), std::io::Error> {
+fn rollback(context: &mut ffi::Context) -> Result<(), std::io::Error> {
+    let index_writer = &mut context.tantivyContext.index_writer;
+    match index_writer.rollback() {
+        Ok(_) => {
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to rollback -> {}", e),
+            ));
+        }
+    }
+}
+
+fn commit_(index_writer: &mut IndexWriter) -> Result<(), std::io::Error> {
+    match index_writer.commit() {
+        Ok(_) => {
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to commit -> {}", e),
+            ));
+        }
+    }
+}
+
+fn commit(context: &mut ffi::Context) -> Result<(), std::io::Error> {
+    let index_writer = &mut context.tantivyContext.index_writer;
+    commit_(index_writer)
+}
+
+fn add_document(
+    index_writer: &mut IndexWriter,
+    document: Document,
+    skip_commit: bool,
+) -> Result<(), std::io::Error> {
+    match index_writer.add_document(document) {
+        Ok(_) => {
+            if skip_commit {
+                return Ok(());
+            } else {
+                commit_(index_writer)
+            }
+        }
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to add document -> {}", e),
+            ));
+        }
+    }
+}
+
+fn add1(
+    context: &mut ffi::Context,
+    input: &ffi::DocumentInput1,
+    skip_commit: bool,
+) -> Result<(), std::io::Error> {
     let schema = &context.tantivyContext.schema;
     let index_writer = &mut context.tantivyContext.index_writer;
     // TODO(gitbuda): schema.parse_document > TantivyDocument::parse_json (LATEST UNSTABLE)
@@ -82,54 +144,20 @@ fn add1(context: &mut ffi::Context, input: &ffi::DocumentInput1) -> Result<(), s
         Ok(json) => json,
         Err(e) => panic!("failed to parser metadata {}", e),
     };
-    match index_writer.add_document(document) {
-        Ok(_) => match index_writer.commit() {
-            Ok(_) => {
-                return Ok(());
-            }
-            Err(e) => {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    format!("Unable to commit adding document -> {}", e),
-                ));
-            }
-        },
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to add document -> {}", e),
-            ));
-        }
-    };
+    add_document(index_writer, document, skip_commit)
 }
 
-fn add2(context: &mut ffi::Context, input: &ffi::DocumentInput2) -> Result<(), std::io::Error> {
+fn add2(
+    context: &mut ffi::Context,
+    input: &ffi::DocumentInput2,
+    skip_commit: bool,
+) -> Result<(), std::io::Error> {
     let schema = &context.tantivyContext.schema;
     let index_writer = &mut context.tantivyContext.index_writer;
     let gid_field = schema.get_field("gid").unwrap();
     let data_field = schema.get_field("data").unwrap();
-    match index_writer.add_document(doc!(
-            gid_field => input.gid,
-            data_field => input.data.clone()))
-    {
-        Ok(_) => match index_writer.commit() {
-            Ok(_) => {
-                return Ok(());
-            }
-            Err(e) => {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    format!("Unable to commit adding document -> {}", e),
-                ));
-            }
-        },
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to add document -> {}", e),
-            ));
-        }
-    };
+    let document = doc!(gid_field => input.gid, data_field => input.data.clone());
+    add_document(index_writer, document, skip_commit)
 }
 
 fn aggregate(
@@ -219,7 +247,8 @@ fn find(
                 panic!("Unable to find document returned by the search query.");
             }
         };
-        let data = doc.get_first(data_field).unwrap().as_json().unwrap();
+        // let data = doc.get_first(data_field).unwrap().as_json().unwrap();
+        let data = doc.get_first(data_field).unwrap().as_text().unwrap();
         // let data = schema.to_json(&doc);
         docs.push(ffi::DocumentOutput {
             data: match to_string(&data) {
@@ -238,7 +267,6 @@ fn find(
 // TODO(gitbuda): Test fuzzy searches
 // let term = Term::from_field_text(data_field, &input.search_query);
 // let query = FuzzyTermQuery::new(term, 2, true);
-
 fn search(
     context: &mut ffi::Context,
     input: &ffi::SearchInput,
@@ -393,8 +421,9 @@ fn create_index1(name: &String) -> Result<ffi::Context, std::io::Error> {
 
 fn create_index2(name: &String) -> Result<ffi::Context, std::io::Error> {
     let mut schema_builder = Schema::builder();
-    schema_builder.add_u64_field("gid", FAST | STORED);
-    let x = schema_builder.add_json_field("data", STORED | TEXT | FAST);
+    schema_builder.add_u64_field("gid", FAST | STORED | INDEXED);
+    // TODO(gitbuda): Be careful, here is just a plain text use JSON instead.
+    schema_builder.add_text_field("data", STORED | TEXT | FAST);
     let schema = schema_builder.build();
     let index = ensure_index_dir_structure(name, &schema)?;
     let index_writer = create_index_writter(&index)?;
