@@ -335,6 +335,7 @@ fn ensure_index_dir_structure(name: &String, schema: &Schema) -> Result<Index, s
                 debug!("{:?} folder created", index_path);
             }
             Err(_) => {
+                // TODO(gitbuda): Don't panic if index create_dir failed.
                 panic!("Failed to create {:?} folder", index_path);
             }
         }
