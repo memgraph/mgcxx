@@ -43,13 +43,13 @@ endif()
 include_directories(${CMAKE_BINARY_DIR}/rust)
 add_subdirectory(rust)
 
-add_executable(text_search_poc text_search_poc.cpp)
-target_link_libraries(text_search_poc PRIVATE fmtlib_static nlohmann_json::nlohmann_json cxxtantivy_rust)
+add_executable(text_search_stress text_search_stress.cpp)
+target_link_libraries(text_search_stress PRIVATE fmtlib_static nlohmann_json::nlohmann_json cxxtantivy_rust)
 
 add_executable(text_search_bench text_search_bench.cpp)
 target_link_libraries(text_search_bench PRIVATE fmtlib_static benchmark::benchmark nlohmann_json::nlohmann_json cxxtantivy_rust)
 
 enable_testing()
-add_executable(text_search_test text_search_test.cpp)
-target_link_libraries(text_search_test gtest gtest_main)
-add_test(NAME text_search_test COMMAND text_search_test)
+add_executable(text_search_unit text_search_unit.cpp)
+target_link_libraries(text_search_unit gtest gtest_main fmtlib_static nlohmann_json::nlohmann_json cxxtantivy_rust)
+add_test(NAME text_search_unit COMMAND text_search_unit)

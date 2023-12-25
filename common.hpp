@@ -8,30 +8,54 @@
 #include "cxx.hpp"
 #include "rust.hpp"
 
-std::vector<cxxtantivy::DocumentInput> dummy_data(uint64_t docs_no = 1,
-                                                  uint64_t props_no = 1) {
-  std::vector<cxxtantivy::DocumentInput> data;
+std::vector<cxxtantivy::DocumentInput1> dummy_data1(uint64_t docs_no = 1,
+                                                    uint64_t props_no = 1) {
+  std::vector<cxxtantivy::DocumentInput1> docs;
+  for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
+    nlohmann::json data = {};
+    nlohmann::json props = {};
+    for (uint64_t prop_index = 0; prop_index < props_no; ++prop_index) {
+      props[fmt::format("key{}", prop_index)] =
+          fmt::format("value{} is AWESOME", prop_index);
+    }
+    data["data"] = props;
+    data["metadata"] = {};
+    data["metadata"]["gid"] = doc_index;
+    data["metadata"]["txid"] = doc_index;
+    data["metadata"]["deleted"] = false;
+    data["metadata"]["is_node"] = false;
+    cxxtantivy::DocumentInput1 doc = {
+        .metadata_and_data = data.dump(),
+    };
+    docs.push_back(doc);
+  }
+  return docs;
+}
+
+std::vector<cxxtantivy::DocumentInput2> dummy_data2(uint64_t docs_no = 1,
+                                                    uint64_t props_no = 1) {
+  std::vector<cxxtantivy::DocumentInput2> docs;
   for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
     nlohmann::json props = {};
     for (uint64_t prop_index = 0; prop_index < props_no; ++prop_index) {
       props[fmt::format("key{}", prop_index)] =
-          fmt::format("value{}", prop_index);
+          fmt::format("value{} is AWESOME", prop_index);
     }
-    cxxtantivy::DocumentInput doc = {
-        .data = cxxtantivy::Element{.gid = doc_index,
-                                    .txid = doc_index,
-                                    .deleted = false,
-                                    .is_node = false,
-                                    .props = props.dump()}};
-    data.push_back(doc);
+    cxxtantivy::DocumentInput2 doc = {
+        .gid = doc_index,
+        .data = props.dump(),
+    };
+    docs.push_back(doc);
   }
-  return data;
+  return docs;
 }
 
-std::ostream &operator<<(std::ostream &os, const cxxtantivy::Element &element) {
-  os << "GID: " << element.gid << "; TXID: " << element.txid
-     << "; DELETED: " << element.deleted << "; IS_NODE: " << element.is_node
-     << "; PROPS: " << element.props;
+std::ostream &operator<<(std::ostream &os,
+                         const cxxtantivy::DocumentOutput &element) {
+  os << element.data;
+  // os << "GID: " << element.gid << "; TXID: " << element.txid
+  //    << "; DELETED: " << element.deleted << "; IS_NODE: " << element.is_node
+  //    << "; PROPS: " << element.props;
   return os;
 }
 
