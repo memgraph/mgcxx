@@ -1,5 +1,8 @@
 #include <chrono>
+#include <filesystem>
 #include <iostream>
+#include <random>
+#include <sstream>
 #include <vector>
 
 #include <fmt/format.h>
@@ -96,4 +99,29 @@ auto measure_time_diff(std::string_view prefix, std::function<T()> f) {
   auto end = now();
   print_time_diff(prefix, start, end);
   return result;
+}
+
+std::filesystem::path
+create_temporary_directory(std::string_view file_prefix = "",
+                           std::string_view file_suffix = "",
+                           unsigned long long max_tries = 100) {
+  auto tmp_dir = std::filesystem::temp_directory_path();
+  unsigned long long i = 0;
+  std::random_device dev;
+  std::mt19937 prng(dev());
+  std::uniform_int_distribution<uint64_t> rand(0);
+  std::filesystem::path path;
+  while (true) {
+    std::stringstream ss;
+    ss << file_prefix << rand(prng) << file_suffix;
+    path = tmp_dir / ss.str();
+    if (std::filesystem::create_directory(path)) {
+      break;
+    }
+    if (i == max_tries) {
+      throw std::runtime_error("could not find non-existing directory");
+    }
+    i++;
+  }
+  return path;
 }

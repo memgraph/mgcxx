@@ -7,6 +7,8 @@
 #include "common.hpp"
 #include "rust.hpp"
 
+// cnt is here to ensure unique directory names because gbench is running
+// benchmarks in parallel.
 static std::atomic<uint64_t> cnt{0};
 static bool global_init_done{false};
 
@@ -17,19 +19,21 @@ public:
       cxxtantivy::init();
       global_init_done = true;
     }
-    auto index_name = fmt::format("index{}", cnt.load());
+    index_path = create_temporary_directory("text_search_index_",
+                                            "_" + std::to_string(cnt.load()))
+                     .string();
     auto index_config =
         cxxtantivy::IndexConfig{.mappings = dummy_mappings1().dump()};
     context = std::make_unique<cxxtantivy::Context>(
-        cxxtantivy::create_index(index_name, index_config));
+        cxxtantivy::create_index(index_path, index_config));
   }
   void TearDown(const ::benchmark::State &state) {
-    // TODO(gitbuda): Drop all generate index folders.
-    // auto index_name = fmt::format("index{}", cnt.load());
-    // cxxtantivy::drop_index(index_name);
+    // NOTE: Dropping index here produces errors probably because of the
+    // concurrent access. Folder delete under the test.sh script.
     cnt.fetch_add(1);
   }
   std::unique_ptr<cxxtantivy::Context> context;
+  std::string index_path;
 };
 
 class MyFixture2 : public benchmark::Fixture {
@@ -39,19 +43,21 @@ public:
       cxxtantivy::init();
       global_init_done = true;
     }
-    auto index_name = fmt::format("index{}", cnt.load());
+    index_path = create_temporary_directory("text_search_index_",
+                                            "_" + std::to_string(cnt.load()))
+                     .string();
     auto index_config =
         cxxtantivy::IndexConfig{.mappings = dummy_mappings2().dump()};
     context = std::make_unique<cxxtantivy::Context>(
-        cxxtantivy::create_index(index_name, index_config));
+        cxxtantivy::create_index(index_path, index_config));
   }
   void TearDown(const ::benchmark::State &state) {
-    // TODO(gitbuda): Drop all generate index folders.
-    // auto index_name = fmt::format("index{}", cnt.load());
-    // cxxtantivy::drop_index(index_name);
+    // NOTE: Dropping index here produces errors probably because of the
+    // concurrent access. Folder delete under the test.sh script.
     cnt.fetch_add(1);
   }
   std::unique_ptr<cxxtantivy::Context> context;
+  std::string index_path;
 };
 
 BENCHMARK_DEFINE_F(MyFixture1, BM_AddSimpleEagerCommit)
