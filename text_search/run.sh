@@ -7,7 +7,7 @@ rm -rf /tmp/text_search_index_*
 cd "$SCRIPT_DIR"
 # TODO(gitbuda): Add clang-format call here.
 
-cd "$SCRIPT_DIR/rust"
+cd "$SCRIPT_DIR"
 cargo fmt
 
 cd "$SCRIPT_DIR/../build"
