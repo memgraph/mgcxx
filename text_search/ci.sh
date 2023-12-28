@@ -12,12 +12,12 @@ cargo fmt
 
 cd "$SCRIPT_DIR/../build"
 rm -rf index*
-cmake
+cmake ..
 make -j8
 cd "$SCRIPT_DIR/../build/text_search"
-./unit
-./bench
-# ./bench --benchmark_filter="MyFixture2/BM_BenchLookup"
-./stress
+./test_unit
+./test_bench
+# ./test_bench --benchmark_filter="MyFixture2/BM_BenchLookup"
+./test_stress
 
 rm -rf /tmp/text_search_index_*

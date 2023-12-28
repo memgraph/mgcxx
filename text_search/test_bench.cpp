@@ -4,7 +4,7 @@
 
 #include <benchmark/benchmark.h>
 
-#include "common.hpp"
+#include "test_util.hpp"
 
 // cnt is here to ensure unique directory names because gbench is running
 // benchmarks in parallel.

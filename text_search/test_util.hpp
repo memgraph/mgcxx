@@ -75,9 +75,6 @@ dummy_data2(uint64_t docs_no = 1, uint64_t props_no = 1) {
 std::ostream &operator<<(std::ostream &os,
                          const memcxx::text_search::DocumentOutput &element) {
   os << element.data;
-  // os << "GID: " << element.gid << "; TXID: " << element.txid
-  //    << "; DELETED: " << element.deleted << "; IS_NODE: " << element.is_node
-  //    << "; PROPS: " << element.props;
   return os;
 }
 

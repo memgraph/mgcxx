@@ -1,6 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "common.hpp"
+#include "test_util.hpp"
 
 TEST(text_search_test_case, simple_test1) {
   try {

@@ -43,13 +43,13 @@ if (${ENABLE_TESTS})
            COMMAND cargo test
            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-  add_executable(stress stress.cpp)
-  target_link_libraries(stress PRIVATE fmtlib_static nlohmann_json::nlohmann_json cxxtantivy_rust)
+  add_executable(test_stress test_stress.cpp)
+  target_link_libraries(test_stress PRIVATE fmtlib_static nlohmann_json::nlohmann_json cxxtantivy_rust)
 
-  add_executable(bench bench.cpp)
-  target_link_libraries(bench PRIVATE fmtlib_static benchmark::benchmark nlohmann_json::nlohmann_json cxxtantivy_rust)
+  add_executable(test_bench test_bench.cpp)
+  target_link_libraries(test_bench PRIVATE fmtlib_static benchmark::benchmark nlohmann_json::nlohmann_json cxxtantivy_rust)
 
-  add_executable(unit unit.cpp)
-  target_link_libraries(unit gtest gtest_main fmtlib_static nlohmann_json::nlohmann_json cxxtantivy_rust)
-  add_test(NAME unit COMMAND unit)
+  add_executable(test_unit test_unit.cpp)
+  target_link_libraries(test_unit gtest gtest_main fmtlib_static nlohmann_json::nlohmann_json cxxtantivy_rust)
+  add_test(NAME test_unit COMMAND test_unit)
 endif()
