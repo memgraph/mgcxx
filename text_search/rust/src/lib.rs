@@ -11,7 +11,7 @@ use tantivy::schema::*;
 use tantivy::{Index, IndexWriter, ReloadPolicy};
 
 // NOTE: Result<T> == Result<T,std::io::Error>.
-#[cxx::bridge(namespace = "cxxtantivy")]
+#[cxx::bridge(namespace = "memcxx::text_search")]
 mod ffi {
     // TODO(gitbuda): Try to put direct pointers to the tantivy datastructures under Context
     struct Context {

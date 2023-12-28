@@ -5,7 +5,6 @@
 #include <benchmark/benchmark.h>
 
 #include "common.hpp"
-#include "rust.hpp"
 
 // cnt is here to ensure unique directory names because gbench is running
 // benchmarks in parallel.
@@ -16,23 +15,23 @@ class MyFixture1 : public benchmark::Fixture {
 public:
   void SetUp(const ::benchmark::State &state) {
     if (!global_init_done) {
-      cxxtantivy::init();
+      memcxx::text_search::init();
       global_init_done = true;
     }
     index_path = create_temporary_directory("text_search_index_",
                                             "_" + std::to_string(cnt.load()))
                      .string();
     auto index_config =
-        cxxtantivy::IndexConfig{.mappings = dummy_mappings1().dump()};
-    context = std::make_unique<cxxtantivy::Context>(
-        cxxtantivy::create_index(index_path, index_config));
+        memcxx::text_search::IndexConfig{.mappings = dummy_mappings1().dump()};
+    context = std::make_unique<memcxx::text_search::Context>(
+        memcxx::text_search::create_index(index_path, index_config));
   }
   void TearDown(const ::benchmark::State &state) {
     // NOTE: Dropping index here produces errors probably because of the
     // concurrent access. Folder delete under the test.sh script.
     cnt.fetch_add(1);
   }
-  std::unique_ptr<cxxtantivy::Context> context;
+  std::unique_ptr<memcxx::text_search::Context> context;
   std::string index_path;
 };
 
@@ -40,23 +39,23 @@ class MyFixture2 : public benchmark::Fixture {
 public:
   void SetUp(const ::benchmark::State &state) {
     if (!global_init_done) {
-      cxxtantivy::init();
+      memcxx::text_search::init();
       global_init_done = true;
     }
     index_path = create_temporary_directory("text_search_index_",
                                             "_" + std::to_string(cnt.load()))
                      .string();
     auto index_config =
-        cxxtantivy::IndexConfig{.mappings = dummy_mappings2().dump()};
-    context = std::make_unique<cxxtantivy::Context>(
-        cxxtantivy::create_index(index_path, index_config));
+        memcxx::text_search::IndexConfig{.mappings = dummy_mappings2().dump()};
+    context = std::make_unique<memcxx::text_search::Context>(
+        memcxx::text_search::create_index(index_path, index_config));
   }
   void TearDown(const ::benchmark::State &state) {
     // NOTE: Dropping index here produces errors probably because of the
     // concurrent access. Folder delete under the test.sh script.
     cnt.fetch_add(1);
   }
-  std::unique_ptr<cxxtantivy::Context> context;
+  std::unique_ptr<memcxx::text_search::Context> context;
   std::string index_path;
 };
 
@@ -68,7 +67,7 @@ BENCHMARK_DEFINE_F(MyFixture1, BM_AddSimpleEagerCommit)
 
   for (auto _ : state) {
     for (const auto &doc : generated_data) {
-      cxxtantivy::add(*context, doc, false);
+      memcxx::text_search::add(*context, doc, false);
     }
   }
 }
@@ -81,24 +80,24 @@ BENCHMARK_DEFINE_F(MyFixture1, BM_AddSimpleLazyCommit)
 
   for (auto _ : state) {
     for (const auto &doc : generated_data) {
-      cxxtantivy::add(*context, doc, true);
+      memcxx::text_search::add(*context, doc, true);
     }
   }
-  cxxtantivy::commit(*context);
+  memcxx::text_search::commit(*context);
 }
 
 BENCHMARK_DEFINE_F(MyFixture1, BM_BenchLookup)(benchmark::State &state) {
   auto repeat_no = state.range(0);
   auto generated_data = dummy_data1(repeat_no, 5);
   for (const auto &doc : generated_data) {
-    cxxtantivy::add(*context, doc, true);
+    memcxx::text_search::add(*context, doc, true);
   }
-  cxxtantivy::commit(*context);
+  memcxx::text_search::commit(*context);
 
-  cxxtantivy::SearchInput search_input = {
+  memcxx::text_search::SearchInput search_input = {
       .search_query = fmt::format("metadata.gid:{}", 0)};
   for (auto _ : state) {
-    auto result = cxxtantivy::search(*context, search_input);
+    auto result = memcxx::text_search::search(*context, search_input);
     if (result.docs.size() < 1) {
       std::exit(1);
     }
@@ -109,13 +108,13 @@ BENCHMARK_DEFINE_F(MyFixture2, BM_BenchLookup)(benchmark::State &state) {
   auto repeat_no = state.range(0);
   auto generated_data = dummy_data2(repeat_no, 5);
   for (const auto &doc : generated_data) {
-    cxxtantivy::add(*context, doc, true);
+    memcxx::text_search::add(*context, doc, true);
   }
-  cxxtantivy::commit(*context);
+  memcxx::text_search::commit(*context);
 
-  cxxtantivy::SearchInput search_input = {.search_query = fmt::format("{}", 0)};
+  memcxx::text_search::SearchInput search_input = {.search_query = fmt::format("{}", 0)};
   for (auto _ : state) {
-    auto result = cxxtantivy::find(*context, search_input);
+    auto result = memcxx::text_search::find(*context, search_input);
     if (result.docs.size() < 1) {
       std::exit(1);
     }

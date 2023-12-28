@@ -10,13 +10,14 @@ cd "$SCRIPT_DIR"
 cd "$SCRIPT_DIR/rust"
 cargo fmt
 
-cd "$SCRIPT_DIR/build"
+cd "$SCRIPT_DIR/../build"
 rm -rf index*
 cmake
 make -j8
-./text_search_unit
-./text_search_bench
-# ./text_search_bench --benchmark_filter="MyFixture2/BM_BenchLookup"
-./text_search_stress
+cd "$SCRIPT_DIR/../build/text_search"
+./unit
+./bench
+# ./bench --benchmark_filter="MyFixture2/BM_BenchLookup"
+./stress
 
 rm -rf /tmp/text_search_index_*

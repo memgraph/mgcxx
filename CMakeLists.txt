@@ -40,16 +40,9 @@ if (CXXTANTIVY_ENABLE_LTO)
   endif()
 endif()
 
-include_directories(${CMAKE_BINARY_DIR}/rust)
-add_subdirectory(rust)
+option(ENABLE_TESTS "Enable tests" ON)
+if (${ENABLE_TESTS})
+    enable_testing()
+endif()
 
-add_executable(text_search_stress text_search_stress.cpp)
-target_link_libraries(text_search_stress PRIVATE fmtlib_static nlohmann_json::nlohmann_json cxxtantivy_rust)
-
-add_executable(text_search_bench text_search_bench.cpp)
-target_link_libraries(text_search_bench PRIVATE fmtlib_static benchmark::benchmark nlohmann_json::nlohmann_json cxxtantivy_rust)
-
-enable_testing()
-add_executable(text_search_unit text_search_unit.cpp)
-target_link_libraries(text_search_unit gtest gtest_main fmtlib_static nlohmann_json::nlohmann_json cxxtantivy_rust)
-add_test(NAME text_search_unit COMMAND text_search_unit)
+add_subdirectory(text_search)
