@@ -8,9 +8,7 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
-#include "cxx.hpp"
-// NOTE: Error is not present under rust.hpp (why cxx.hpp is required).
-#include "rust.hpp"
+#include "text_search.hpp"
 
 nlohmann::json dummy_mappings1() {
   nlohmann::json mappings = {};
@@ -21,8 +19,8 @@ nlohmann::json dummy_mappings1() {
       {"type", "json"}, {"fast", true}, {"stored", true}, {"text", true}};
   return mappings;
 }
-std::vector<memcxx::text_search::DocumentInput> dummy_data1(uint64_t docs_no = 1,
-                                                   uint64_t props_no = 1) {
+std::vector<memcxx::text_search::DocumentInput>
+dummy_data1(uint64_t docs_no = 1, uint64_t props_no = 1) {
   std::vector<memcxx::text_search::DocumentInput> docs;
   for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
     nlohmann::json data = {};
@@ -54,8 +52,8 @@ nlohmann::json dummy_mappings2() {
       {"type", "json"}, {"fast", true}, {"stored", true}, {"text", true}};
   return mappings;
 }
-std::vector<memcxx::text_search::DocumentInput> dummy_data2(uint64_t docs_no = 1,
-                                                   uint64_t props_no = 1) {
+std::vector<memcxx::text_search::DocumentInput>
+dummy_data2(uint64_t docs_no = 1, uint64_t props_no = 1) {
   std::vector<memcxx::text_search::DocumentInput> docs;
   for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
     nlohmann::json data = {};

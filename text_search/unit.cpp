@@ -19,9 +19,11 @@ TEST(text_search_test_case, simple_test1) {
     }
 
     memcxx::text_search::SearchInput search_input = {.search_query =
-                                                "data.key1:AWESOME"};
-    auto result1 = measure_time_diff<memcxx::text_search::SearchOutput>(
-        "search1", [&]() { return memcxx::text_search::search(context, search_input); });
+                                                         "data.key1:AWESOME"};
+    auto result1 =
+        measure_time_diff<memcxx::text_search::SearchOutput>("search1", [&]() {
+          return memcxx::text_search::search(context, search_input);
+        });
     ASSERT_EQ(result1.docs.size(), 5);
     for (const auto &doc : result1.docs) {
       std::cout << doc << std::endl;
@@ -38,11 +40,11 @@ TEST(text_search_test_case, simple_test1) {
         .search_query = "data.key1:AWESOME",
         .aggregation_query = aggregation_query.dump(),
     };
-    auto aggregation_result =
-        nlohmann::json::parse(memcxx::text_search::aggregate(context, aggregate).data);
+    auto aggregation_result = nlohmann::json::parse(
+        memcxx::text_search::aggregate(context, aggregate).data);
     EXPECT_NEAR(aggregation_result["count"]["value"], 5, 1e-6);
     std::cout << aggregation_result << std::endl;
-  } catch (const rust::Error &error) {
+  } catch (const ::rust::Error &error) {
     std::cout << error.what() << std::endl;
     FAIL();
   }
@@ -64,13 +66,13 @@ TEST(text_search_test_case, simple_test2) {
     }
 
     memcxx::text_search::SearchInput search_input = {.search_query =
-                                                fmt::format("{}", 0)};
+                                                         fmt::format("{}", 0)};
     auto result = memcxx::text_search::find(context, search_input);
     ASSERT_EQ(result.docs.size(), 1);
     for (const auto &doc : result.docs) {
       std::cout << doc << std::endl;
     }
-  } catch (const rust::Error &error) {
+  } catch (const ::rust::Error &error) {
     std::cout << error.what() << std::endl;
     FAIL();
   }
@@ -91,11 +93,12 @@ TEST(text_search_test_case, mappings) {
     mappings["properties"]["prop4"] = {
         {"type", "bool"}, {"stored", true}, {"text", true}, {"fast", true}};
     memcxx::text_search::create_index(
-        index_name, memcxx::text_search::IndexConfig{.mappings = mappings.dump()});
+        index_name,
+        memcxx::text_search::IndexConfig{.mappings = mappings.dump()});
     // NOTE: This test just verifies the code can be called, add deeper test
     // when improving extract_schema.
     // TODO(gitbuda): Implement full range of extract_schema options.
-  } catch (const rust::Error &error) {
+  } catch (const ::rust::Error &error) {
     std::cout << error.what() << std::endl;
     FAIL();
   }
@@ -105,7 +108,7 @@ TEST(text_search_test_case, mappings) {
 int main(int argc, char *argv[]) {
   // init tantivy engine (actually logging setup, should be called once per
   // process, early)
-  memcxx::text_search::init();
+  memcxx::text_search::init("todo");
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

@@ -15,7 +15,7 @@ class MyFixture1 : public benchmark::Fixture {
 public:
   void SetUp(const ::benchmark::State &state) {
     if (!global_init_done) {
-      memcxx::text_search::init();
+      memcxx::text_search::init("todo");
       global_init_done = true;
     }
     index_path = create_temporary_directory("text_search_index_",
@@ -39,7 +39,7 @@ class MyFixture2 : public benchmark::Fixture {
 public:
   void SetUp(const ::benchmark::State &state) {
     if (!global_init_done) {
-      memcxx::text_search::init();
+      memcxx::text_search::init("todo");
       global_init_done = true;
     }
     index_path = create_temporary_directory("text_search_index_",
@@ -112,7 +112,8 @@ BENCHMARK_DEFINE_F(MyFixture2, BM_BenchLookup)(benchmark::State &state) {
   }
   memcxx::text_search::commit(*context);
 
-  memcxx::text_search::SearchInput search_input = {.search_query = fmt::format("{}", 0)};
+  memcxx::text_search::SearchInput search_input = {.search_query =
+                                                       fmt::format("{}", 0)};
   for (auto _ : state) {
     auto result = memcxx::text_search::find(*context, search_input);
     if (result.docs.size() < 1) {

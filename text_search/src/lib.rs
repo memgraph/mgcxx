@@ -70,7 +70,7 @@ mod ffi {
     extern "Rust" {
         type TantivyContext;
         fn drop_index(name: &String) -> Result<()>;
-        fn init() -> Result<()>;
+        fn init(_log_level: &String) -> Result<()>;
         /// path is just passed into std::path::Path::new -> pass any absolute or relative path to
         /// yours process working directory
         /// config contains mappings definition, take a look under [IndexConfig]
@@ -336,7 +336,7 @@ fn drop_index(name: &String) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn init() -> Result<(), std::io::Error> {
+fn init(_log_level: &String) -> Result<(), std::io::Error> {
     let log_init_res = env_logger::try_init_from_env(
         env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
     );
