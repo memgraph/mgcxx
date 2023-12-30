@@ -6,12 +6,14 @@ rm -rf /tmp/text_search_index_*
 
 cd "$SCRIPT_DIR"
 # TODO(gitbuda): Add clang-format call here.
-
-cd "$SCRIPT_DIR"
 cargo fmt
 
 cd "$SCRIPT_DIR/../build"
-rm -rf index*
+if [ "$1" == "--full" ]; then
+  rm -rf ./* && rm -rf .cache
+else
+  rm -rf index*
+fi
 cmake ..
 make -j8
 cd "$SCRIPT_DIR/../build/text_search"
