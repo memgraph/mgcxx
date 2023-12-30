@@ -1,7 +1,7 @@
 #include "cxx.hpp"
-// NOTE: Error is not present under cxxtantivy.hpp, that's why cxx.hpp is
-// required here.
-#include "cxxtantivy.hpp"
+// NOTE: Error is not present under mgcxx_text_search.hpp (the way how cxx
+// works), that's why cxx.hpp is required here.
+#include "mgcxx_text_search.hpp"
 
 // USAGE NOTE:
 //   * Error returned from cxx calls are transformed into ::rust::Error
