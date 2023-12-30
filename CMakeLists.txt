@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
+project(mgcxx VERSION 0.0.3)
 set (CMAKE_CXX_STANDARD 20)
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
@@ -6,7 +7,6 @@ endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(ExternalProject)
 include(FetchContent)
-project(cxxtantivy)
 option(ENABLE_TESTS "Enable tests" ON)
 
 # NOTE: Be careful with moving this outside of the if block (it should not be

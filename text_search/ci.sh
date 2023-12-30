@@ -37,15 +37,21 @@ mkdir -p "$SCRIPT_DIR/../build"
 cd "$SCRIPT_DIR/../build"
 if [ "$MGCXX_TEXT_SEARCH_CI_FULL" = true ]; then
   rm -rf ./* && rm -rf .cache
+  # Added here because Cargo.lock is ignored for libraries, but it's not
+  # located under build folder. Rebuilding from scratch should also start clean
+  # from cargo perspective.
+  rm "$SCRIPT_DIR/Cargo.lock" || true
 else
   rm -rf index*
 fi
+
 if [ "$MGCXX_TEXT_SEARCH_CI_RELEASE" = true ]; then
   cmake -DCMAKE_BUILD_TYPE=Release ..
 else
   cmake ..
 fi
 make -j8
+
 cd "$SCRIPT_DIR/../build/text_search"
 ./test_unit
 ./test_bench
