@@ -1,14 +1,16 @@
 [package]
 name = "tantivy_text_search"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 
 [dependencies]
-cxx = "1.0"
+cxx = "1.0.111"
 tantivy = "0.21.1"
 log = "0.4.17"
 env_logger = "0.10.0"
 serde_json = "1.0.79"
+# TODO(gitbuda): ahash fixed -> v0.8.7 does NOT compile -> remove below line.
+ahash = "=0.8.5"
 
 [build-dependencies]
 cxx-build = "1.0"

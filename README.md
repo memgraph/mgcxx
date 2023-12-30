@@ -5,12 +5,7 @@
 ### TODOs
 
 - [ ] Figure out the right API ⏳
-  - [ ] Expose index std::path to be configurable on the C++ side
-  - [ ] Don't panic on create_index because if index can't be created -> just return to the user
-  - [ ] cxxtantivy::function but rust::Error -> unify
-  - [ ] Move includes to cxxtantivy/rust|cxx.hpp
   - [ ] All READ methods (`search`, `aggregate`, `find`) depend on the exact schema -> make it robust
-  - [ ] Consider adding multiple workspaces under rust/ because multiple libraries could be added (`memcxx` as a repo, because of the shared deps).
 - [ ] Write unit / integration test to compare STRING vs JSON fiels search query syntax.
 - [ ] Figure out what's the right search syntax for a property graph
 - [ ] Add some notion of pagination

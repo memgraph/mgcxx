@@ -33,6 +33,7 @@ cd "$SCRIPT_DIR"
 # TODO(gitbuda): Add clang-format call here.
 cargo fmt
 
+mkdir -p "$SCRIPT_DIR/../build"
 cd "$SCRIPT_DIR/../build"
 if [ "$MGCXX_TEXT_SEARCH_CI_FULL" = true ]; then
   rm -rf ./* && rm -rf .cache
