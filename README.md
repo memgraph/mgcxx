@@ -1,4 +1,8 @@
-# cxxtantivy
+# mgcxx (experimental)
+
+A collection of C++ wrappers around Rust libraries.
+The list includes:
+- Full-text search enabled by [tantivy](https://github.com/quickwit-oss/tantivy)
 
 ## Work in Progress
 

@@ -75,12 +75,13 @@ mod ffi {
         /// yours process working directory
         /// config contains mappings definition, take a look under [IndexConfig]
         fn create_index(path: &String, config: &IndexConfig) -> Result<Context>;
-        fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
-        fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
-        fn find(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn add(context: &mut Context, input: &DocumentInput, skip_commit: bool) -> Result<()>;
         fn commit(context: &mut Context) -> Result<()>;
         fn rollback(context: &mut Context) -> Result<()>;
+        // TODO(gitbuda): Make sure the read interface is set in-place.
+        fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
+        fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
+        fn find(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
     }
 }
 
