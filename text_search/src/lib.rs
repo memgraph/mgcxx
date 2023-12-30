@@ -11,12 +11,28 @@ use tantivy::schema::*;
 use tantivy::{Index, IndexWriter, ReloadPolicy};
 
 // NOTE: Result<T> == Result<T,std::io::Error>.
-#[cxx::bridge(namespace = "cxxtantivy")]
+#[cxx::bridge(namespace = "memcxx::text_search")]
 mod ffi {
+    // TODO(gitbuda): Try to put direct pointers to the tantivy datastructures under Context
     struct Context {
         tantivyContext: Box<TantivyContext>,
     }
 
+    // TODO(gitbuda): Write all the right combinations.
+    /// mappings format (JSON string expected):
+    ///   {
+    ///     "properties": {
+    ///       "{{field_name}}": {
+    ///         "type": "{{bool|json|text|u64}}",
+    ///         "fast": {{true|false}},
+    ///         "indexed": {{true|false}},
+    ///         "stored": {{true|false}},
+    ///         "text": {{true|false}},
+    ///       }
+    ///     }
+    ///   }
+    /// NOTE: "properties" is just taken to be similar with other text search engines, exact
+    /// senamtics might be different.
     struct IndexConfig {
         mappings: String,
     }
@@ -54,8 +70,11 @@ mod ffi {
     extern "Rust" {
         type TantivyContext;
         fn drop_index(name: &String) -> Result<()>;
-        fn init() -> Result<()>;
-        fn create_index(name: &String, config: &IndexConfig) -> Result<Context>;
+        fn init(_log_level: &String) -> Result<()>;
+        /// path is just passed into std::path::Path::new -> pass any absolute or relative path to
+        /// yours process working directory
+        /// config contains mappings definition, take a look under [IndexConfig]
+        fn create_index(path: &String, config: &IndexConfig) -> Result<Context>;
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn find(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
@@ -317,25 +336,37 @@ fn drop_index(name: &String) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn init() -> Result<(), std::io::Error> {
+fn init(_log_level: &String) -> Result<(), std::io::Error> {
     let log_init_res = env_logger::try_init_from_env(
         env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
     );
+    // TODO(gitbuda): If more than one module tries to do this -> the later call might fail ->
+    // in that case, this code should be adjusted (or the error should be ignored because the
+    // logger is already initialized) -> if this happens consider what would be the best solution.
     if let Err(e) = log_init_res {
-        println!("failed to initialize logger: {e:?}");
+        return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to initialize tantivy (text search engine) logger -> {} -> you should probably stop your entire process and make sure it can be initialized properly.", e),
+        ));
     }
     Ok(())
 }
 
-fn ensure_index_dir_structure(name: &String, schema: &Schema) -> Result<Index, std::io::Error> {
-    let index_path = std::path::Path::new(name);
+fn ensure_index_dir_structure(path: &String, schema: &Schema) -> Result<Index, std::io::Error> {
+    let index_path = std::path::Path::new(path);
     if !index_path.exists() {
         match std::fs::create_dir(index_path) {
             Ok(_) => {
                 debug!("{:?} folder created", index_path);
             }
-            Err(_) => {
-                panic!("Failed to create {:?} folder", index_path);
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!(
+                        "Failed to create {:?} text search index folder -> {}",
+                        index_path, e
+                    ),
+                ));
             }
         }
     }
@@ -346,7 +377,10 @@ fn ensure_index_dir_structure(name: &String, schema: &Schema) -> Result<Index, s
         Err(e) => {
             return Err(Error::new(
                 ErrorKind::Other,
-                format!("Unable to initialize index -> {}", e),
+                format!(
+                    "Unable to initialize text search index under {:?} -> {}",
+                    index_path, e
+                ),
             ));
         }
     };
@@ -506,7 +540,7 @@ fn extract_schema(mappings: &serde_json::Map<String, Value>) -> Result<Schema, s
     Ok(schema)
 }
 
-fn create_index(name: &String, config: &ffi::IndexConfig) -> Result<ffi::Context, std::io::Error> {
+fn create_index(path: &String, config: &ffi::IndexConfig) -> Result<ffi::Context, std::io::Error> {
     let mappings = match serde_json::from_str::<serde_json::Map<String, Value>>(&config.mappings) {
         Ok(r) => r,
         Err(e) => {
@@ -517,7 +551,7 @@ fn create_index(name: &String, config: &ffi::IndexConfig) -> Result<ffi::Context
         }
     };
     let schema = extract_schema(&mappings)?;
-    let index = ensure_index_dir_structure(name, &schema)?;
+    let index = ensure_index_dir_structure(path, &schema)?;
     let index_writer = create_index_writter(&index)?;
     Ok(ffi::Context {
         tantivyContext: Box::new(TantivyContext {

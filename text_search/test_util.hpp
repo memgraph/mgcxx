@@ -1,12 +1,14 @@
 #include <chrono>
+#include <filesystem>
 #include <iostream>
+#include <random>
+#include <sstream>
 #include <vector>
 
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
-#include "cxx.hpp"
-#include "rust.hpp"
+#include "text_search.hpp"
 
 nlohmann::json dummy_mappings1() {
   nlohmann::json mappings = {};
@@ -17,9 +19,9 @@ nlohmann::json dummy_mappings1() {
       {"type", "json"}, {"fast", true}, {"stored", true}, {"text", true}};
   return mappings;
 }
-std::vector<cxxtantivy::DocumentInput> dummy_data1(uint64_t docs_no = 1,
-                                                   uint64_t props_no = 1) {
-  std::vector<cxxtantivy::DocumentInput> docs;
+std::vector<memcxx::text_search::DocumentInput>
+dummy_data1(uint64_t docs_no = 1, uint64_t props_no = 1) {
+  std::vector<memcxx::text_search::DocumentInput> docs;
   for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
     nlohmann::json data = {};
     nlohmann::json props = {};
@@ -33,7 +35,7 @@ std::vector<cxxtantivy::DocumentInput> dummy_data1(uint64_t docs_no = 1,
     data["metadata"]["txid"] = doc_index;
     data["metadata"]["deleted"] = false;
     data["metadata"]["is_node"] = false;
-    cxxtantivy::DocumentInput doc = {
+    memcxx::text_search::DocumentInput doc = {
         .data = data.dump(),
     };
     docs.push_back(doc);
@@ -50,9 +52,9 @@ nlohmann::json dummy_mappings2() {
       {"type", "json"}, {"fast", true}, {"stored", true}, {"text", true}};
   return mappings;
 }
-std::vector<cxxtantivy::DocumentInput> dummy_data2(uint64_t docs_no = 1,
-                                                   uint64_t props_no = 1) {
-  std::vector<cxxtantivy::DocumentInput> docs;
+std::vector<memcxx::text_search::DocumentInput>
+dummy_data2(uint64_t docs_no = 1, uint64_t props_no = 1) {
+  std::vector<memcxx::text_search::DocumentInput> docs;
   for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
     nlohmann::json data = {};
     data["gid"] = doc_index;
@@ -62,7 +64,7 @@ std::vector<cxxtantivy::DocumentInput> dummy_data2(uint64_t docs_no = 1,
           fmt::format("value{} is AWESOME", prop_index);
     }
     data["data"] = props;
-    cxxtantivy::DocumentInput doc = {
+    memcxx::text_search::DocumentInput doc = {
         .data = data.dump(),
     };
     docs.push_back(doc);
@@ -71,11 +73,8 @@ std::vector<cxxtantivy::DocumentInput> dummy_data2(uint64_t docs_no = 1,
 }
 
 std::ostream &operator<<(std::ostream &os,
-                         const cxxtantivy::DocumentOutput &element) {
+                         const memcxx::text_search::DocumentOutput &element) {
   os << element.data;
-  // os << "GID: " << element.gid << "; TXID: " << element.txid
-  //    << "; DELETED: " << element.deleted << "; IS_NODE: " << element.is_node
-  //    << "; PROPS: " << element.props;
   return os;
 }
 
@@ -96,4 +95,29 @@ auto measure_time_diff(std::string_view prefix, std::function<T()> f) {
   auto end = now();
   print_time_diff(prefix, start, end);
   return result;
+}
+
+std::filesystem::path
+create_temporary_directory(std::string_view file_prefix = "",
+                           std::string_view file_suffix = "",
+                           unsigned long long max_tries = 100) {
+  auto tmp_dir = std::filesystem::temp_directory_path();
+  unsigned long long i = 0;
+  std::random_device dev;
+  std::mt19937 prng(dev());
+  std::uniform_int_distribution<uint64_t> rand(0);
+  std::filesystem::path path;
+  while (true) {
+    std::stringstream ss;
+    ss << file_prefix << rand(prng) << file_suffix;
+    path = tmp_dir / ss.str();
+    if (std::filesystem::create_directory(path)) {
+      break;
+    }
+    if (i == max_tries) {
+      throw std::runtime_error("could not find non-existing directory");
+    }
+    i++;
+  }
+  return path;
 }

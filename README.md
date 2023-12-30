@@ -43,4 +43,5 @@
 
 ## Resources
 
-* https://fulmicoton.com/posts/behold-tantivy-part2/
+* https://fulmicoton.com/posts/behold-tantivy-part2
+* https://stackoverflow.com/questions/37924383/combining-several-static-libraries-into-one-using-cmake

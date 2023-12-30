@@ -1,0 +1,54 @@
+#!/bin/bash -e
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+export RUST_LOG=warn
+export TMPDIR="/tmp" # To make std::filesystem::temp_directory_path returns path under /tmp
+rm -rf /tmp/text_search_index_*
+print_help() {
+  echo "$0 [--full] [--release]"
+  exit 1
+}
+
+MGCXX_TEXT_SEARCH_CI_FULL=false
+MGCXX_TEXT_SEARCH_CI_RELEASE=false
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --full)
+      MGCXX_TEXT_SEARCH_CI_FULL=true
+      shift
+    ;;
+    --release)
+      MGCXX_TEXT_SEARCH_CI_RELEASE=true
+      shift
+    ;;
+    *)
+      print_help
+    ;;
+  esac
+done
+echo "Run config:"
+echo "  full   : $MGCXX_TEXT_SEARCH_CI_FULL"
+echo "  release: $MGCXX_TEXT_SEARCH_CI_RELEASE"
+
+cd "$SCRIPT_DIR"
+# TODO(gitbuda): Add clang-format call here.
+cargo fmt
+
+cd "$SCRIPT_DIR/../build"
+if [ "$MGCXX_TEXT_SEARCH_CI_FULL" = true ]; then
+  rm -rf ./* && rm -rf .cache
+else
+  rm -rf index*
+fi
+if [ "$MGCXX_TEXT_SEARCH_CI_RELEASE" = true ]; then
+  cmake -DCMAKE_BUILD_TYPE=Release ..
+else
+  cmake ..
+fi
+make -j8
+cd "$SCRIPT_DIR/../build/text_search"
+./test_unit
+./test_bench
+# ./test_bench --benchmark_filter="MyFixture2/BM_BenchLookup"
+./test_stress
+
+rm -rf /tmp/text_search_index_*
