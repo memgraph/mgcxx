@@ -73,11 +73,8 @@ mod ffi {
         fn add(context: &mut Context, input: &DocumentInput, skip_commit: bool) -> Result<()>;
         fn commit(context: &mut Context) -> Result<()>;
         fn rollback(context: &mut Context) -> Result<()>;
-        // TODO(gitbuda): Make sure the read interface is set in-place.
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
-        // TODO(gitbuda): update
-        // TODO(gitbuda): delete
         fn drop_index(path: &String) -> Result<()>;
     }
 }
@@ -271,7 +268,18 @@ fn create_index_dir_structure(
             }
         }
     }
-    let mmap_directory = MmapDirectory::open(&index_path).unwrap();
+    let mmap_directory = match MmapDirectory::open(&index_path) {
+        Ok(d) => d,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Failed to mmap text search index folder at {:?} -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
     // NOTE: If schema doesn't match, open_or_create is going to return an error.
     let index = match Index::open_or_create(mmap_directory, schema.clone()) {
         Ok(index) => index,
@@ -321,12 +329,21 @@ fn add(
     input: &ffi::DocumentInput,
     skip_commit: bool,
 ) -> Result<(), std::io::Error> {
+    let index_path = &context.tantivyContext.index_path;
     let schema = &context.tantivyContext.schema;
     let index_writer = &mut context.tantivyContext.index_writer;
     // TODO(gitbuda): schema.parse_document > TantivyDocument::parse_json (LATEST UNSTABLE)
     let document = match schema.parse_document(&input.data) {
         Ok(json) => json,
-        Err(e) => panic!("failed to parser metadata {}", e),
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to add document into text search index {:?} because schema doesn't match -> {} Please check mappings.",
+                    index_path, e
+                ),
+            ));
+        }
     };
     match index_writer.add_document(document) {
         Ok(_) => {
@@ -356,7 +373,7 @@ fn commit(context: &mut ffi::Context) -> Result<(), std::io::Error> {
             return Err(Error::new(
                 ErrorKind::Other,
                 format!(
-                    "Unable to commit for text search index at {:?} -> {}",
+                    "Unable to commit text search index at {:?} -> {}",
                     index_path, e
                 ),
             ));
@@ -375,12 +392,33 @@ fn rollback(context: &mut ffi::Context) -> Result<(), std::io::Error> {
             return Err(Error::new(
                 ErrorKind::Other,
                 format!(
-                    "Unable to rollback for text search index at {:?} -> {}",
+                    "Unable to rollback text search index at {:?} -> {}",
                     index_path, e
                 ),
             ));
         }
     }
+}
+
+fn search_get_fields(
+    fields: &Vec<String>,
+    schema: &Schema,
+    index_path: &std::path::PathBuf,
+) -> Result<Vec<Field>, std::io::Error> {
+    let mut result: Vec<Field> = Vec::new();
+    result.reserve(fields.len());
+    for name in fields {
+        match schema.get_field(name) {
+            Ok(f) => result.push(f),
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!("{} inside {:?} text seatch index", e, index_path),
+                ));
+            }
+        }
+    }
+    Ok(result)
 }
 
 fn search(
@@ -406,17 +444,8 @@ fn search(
             ));
         }
     };
-    // TODO(gitbuda): Replace unwrap with an error if fails
-    let search_fields: Vec<_> = input
-        .search_fields
-        .iter()
-        .map(|name| schema.get_field(&name).unwrap())
-        .collect();
-    let return_fields: Vec<_> = input
-        .return_fields
-        .iter()
-        .map(|name| (name, schema.get_field(&name).unwrap()))
-        .collect();
+    let search_fields = search_get_fields(&input.search_fields, schema, index_path)?;
+    let return_fields = search_get_fields(&input.return_fields, schema, index_path)?;
     let query_parser = QueryParser::for_index(index, search_fields);
     let query = match query_parser.parse_query(&input.search_query) {
         Ok(q) => q,
@@ -458,11 +487,32 @@ fn search(
             }
         };
         let mut data: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-        for (name, field) in &return_fields {
-            data.insert(
-                name.to_string(),
-                serde_json::to_value(doc.get_first(*field).unwrap().as_json().unwrap()).unwrap(),
-            );
+        for (name, field) in input.return_fields.iter().zip(return_fields.iter()) {
+            let field_data = match doc.get_first(*field) {
+                Some(f) => f,
+                None => continue,
+            };
+            // TODO(gitbuda): Shouldn't not just be JSON -> deduce from mappings!
+            let field_as_tantivy_json = match field_data.as_json() {
+                Some(f) => f,
+                None => {
+                    // TODO(gitbuda): Is error here the best?
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!("Unable to convert field data to json"),
+                    ));
+                }
+            };
+            let field_as_json = match serde_json::to_value(field_as_tantivy_json) {
+                Ok(f) => f,
+                Err(_) => {
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!("Unable to convert field data to json"),
+                    ));
+                }
+            };
+            data.insert(name.to_string(), field_as_json);
         }
         docs.push(ffi::DocumentOutput {
             data: match to_string(&data) {
@@ -486,6 +536,7 @@ fn aggregate(
     context: &mut ffi::Context,
     input: &ffi::SearchInput,
 ) -> Result<ffi::DocumentOutput, std::io::Error> {
+    let index_path = &context.tantivyContext.index_path;
     let index = &context.tantivyContext.index;
     let schema = &context.tantivyContext.schema;
     let reader = match index
@@ -501,11 +552,7 @@ fn aggregate(
             ));
         }
     };
-    let search_fields: Vec<_> = input
-        .search_fields
-        .iter()
-        .map(|name| schema.get_field(&name).unwrap())
-        .collect();
+    let search_fields = search_get_fields(&input.search_fields, schema, index_path)?;
     let query_parser = QueryParser::for_index(index, search_fields);
     let query = match query_parser.parse_query(&input.search_query) {
         Ok(q) => q,
@@ -519,7 +566,18 @@ fn aggregate(
     let searcher = reader.searcher();
     let agg_req: Aggregations = serde_json::from_str(&input.aggregation_query)?;
     let collector = AggregationCollector::from_aggs(agg_req, Default::default());
-    let agg_res: AggregationResults = searcher.search(&query, &collector).unwrap();
+    let agg_res: AggregationResults = match searcher.search(&query, &collector) {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Failed to gather aggregation results for {:?} text search index -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
     let res: Value = serde_json::to_value(agg_res)?;
     Ok(ffi::DocumentOutput {
         data: res.to_string(),

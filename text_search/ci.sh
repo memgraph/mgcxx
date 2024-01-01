@@ -30,10 +30,12 @@ echo "  full   : $MGCXX_TEXT_SEARCH_CI_FULL"
 echo "  release: $MGCXX_TEXT_SEARCH_CI_RELEASE"
 
 cd "$SCRIPT_DIR/.."
-FILES_TO_FIX=$({ git diff --name-only ; git diff --name-only --staged ; } | sort | uniq | egrep "\.c$|\.cpp$|.cxx$|\.h$|\.hpp$|\.hxx$")
-for file in "${FILES_TO_FIX}"; do
-  clang-format -i -verbose ${file}
-done
+FILES_TO_FIX=$({ git diff --name-only ; git diff --name-only --staged ; } | sort | uniq | egrep "\.c$|\.cpp$|.cxx$|\.h$|\.hpp$|\.hxx$" || true)
+if [ ! -z "$FILES_TO_FIX" ]; then
+  for file in "${FILES_TO_FIX}"; do
+    clang-format -i -verbose ${file}
+  done
+fi
 cd "$SCRIPT_DIR"
 cargo fmt
 

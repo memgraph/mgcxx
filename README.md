@@ -11,6 +11,7 @@ The list includes:
 - [ ] Implement full API
     - [ ] delete
     - [ ] update
+- [ ] Polish & test all error messages
 - [ ] Write unit / integration test to compare STRING vs JSON fiels search query syntax.
 - [ ] Figure out what's the right search syntax for a property graph
 - [ ] Add some notion of pagination

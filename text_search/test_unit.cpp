@@ -97,15 +97,21 @@ TEST(text_search_test_case, mappings) {
         {"type", "json"}, {"stored", true}, {"text", true}, {"fast", true}};
     mappings["properties"]["prop4"] = {
         {"type", "bool"}, {"stored", true}, {"text", true}, {"fast", true}};
-    memcxx::text_search::create_index(
+    auto context = memcxx::text_search::create_index(
         index_name,
         memcxx::text_search::IndexConfig{.mappings = mappings.dump()});
     // NOTE: This test just verifies the code can be called, add deeper test
     // when improving extract_schema.
     // TODO(gitbuda): Implement full range of extract_schema options.
+    memcxx::text_search::SearchInput search_input = {
+        .search_fields = {"prop1000"},
+        .search_query = "bla",
+        .return_fields = {"data"}};
+    memcxx::text_search::search(context, search_input);
   } catch (const ::rust::Error &error) {
     std::cout << error.what() << std::endl;
-    FAIL();
+    EXPECT_STREQ(error.what(), "The field does not exist: 'prop1000' inside "
+                               "\"tantivy_index_mappings\" text seatch index");
   }
 }
 
