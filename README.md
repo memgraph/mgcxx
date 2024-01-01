@@ -8,8 +8,9 @@ The list includes:
 
 ### TODOs
 
-- [ ] Figure out the right API ⏳
-  - [ ] All READ methods (`search`, `aggregate`, `find`) depend on the exact schema -> make it robust
+- [ ] Implement full API
+    - [ ] delete
+    - [ ] update
 - [ ] Write unit / integration test to compare STRING vs JSON fiels search query syntax.
 - [ ] Figure out what's the right search syntax for a property graph
 - [ ] Add some notion of pagination
@@ -33,6 +34,7 @@ The list includes:
         - [ ] Note [DocAddress](https://docs.rs/tantivy/latest/tantivy/struct.DocAddress.html) is composed of 2 u32 but the `SegmentOrdinal` is tied to the `Searcher` -> is it possible/wise to cache the address (`SegmentId` is UUID)
             - [ ] A [searcher](https://docs.rs/tantivy/latest/tantivy/struct.IndexReader.html#method.searcher) per transaction -> cache `DocAddress` inside Memgraph's `ElementAccessors`?
 - [ ] Implement the stress test by adding & searching to the same index concurrently + large dataset generator.
+- [ ] Consider implementing panic! handler preventing outside process to crash (optionally).
 
 ### NOTEs
 

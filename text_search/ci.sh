@@ -29,8 +29,12 @@ echo "Run config:"
 echo "  full   : $MGCXX_TEXT_SEARCH_CI_FULL"
 echo "  release: $MGCXX_TEXT_SEARCH_CI_RELEASE"
 
+cd "$SCRIPT_DIR/.."
+FILES_TO_FIX=$({ git diff --name-only ; git diff --name-only --staged ; } | sort | uniq | egrep "\.c$|\.cpp$|.cxx$|\.h$|\.hpp$|\.hxx$")
+for file in "${FILES_TO_FIX}"; do
+  clang-format -i -verbose ${file}
+done
 cd "$SCRIPT_DIR"
-# TODO(gitbuda): Add clang-format call here.
 cargo fmt
 
 mkdir -p "$SCRIPT_DIR/../build"

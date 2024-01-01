@@ -49,9 +49,13 @@ mod ffi {
     }
 
     struct SearchInput {
+        search_fields: Vec<String>,
         search_query: String,
+        return_fields: Vec<String>,
         aggregation_query: String,
         // TODO(gitbuda): Add stuff like skip & limit.
+        // NOTE: Any primitive value here is a bit of a problem because of default value on the C++
+        // side.
     }
     struct SearchOutput {
         docs: Vec<DocumentOutput>,
@@ -71,8 +75,9 @@ mod ffi {
         fn rollback(context: &mut Context) -> Result<()>;
         // TODO(gitbuda): Make sure the read interface is set in-place.
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
-        fn find(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
+        // TODO(gitbuda): update
+        // TODO(gitbuda): delete
         fn drop_index(path: &String) -> Result<()>;
     }
 }
@@ -382,6 +387,7 @@ fn search(
     context: &mut ffi::Context,
     input: &ffi::SearchInput,
 ) -> Result<ffi::SearchOutput, std::io::Error> {
+    let index_path = &context.tantivyContext.index_path;
     let index = &context.tantivyContext.index;
     let schema = &context.tantivyContext.schema;
     let reader = match index
@@ -393,102 +399,82 @@ fn search(
         Err(e) => {
             return Err(Error::new(
                 ErrorKind::Other,
-                format!("Unable to read (reader init failed): {}", e),
+                format!(
+                    "Unable to read (reader for {:?} text search index failed) -> {}",
+                    index_path, e
+                ),
             ));
         }
     };
-    let metadata_field = schema.get_field("metadata").unwrap();
-    let data_field = schema.get_field("data").unwrap();
-    let query_parser = QueryParser::for_index(index, vec![metadata_field]);
+    // TODO(gitbuda): Replace unwrap with an error if fails
+    let search_fields: Vec<_> = input
+        .search_fields
+        .iter()
+        .map(|name| schema.get_field(&name).unwrap())
+        .collect();
+    let return_fields: Vec<_> = input
+        .return_fields
+        .iter()
+        .map(|name| (name, schema.get_field(&name).unwrap()))
+        .collect();
+    let query_parser = QueryParser::for_index(index, search_fields);
     let query = match query_parser.parse_query(&input.search_query) {
         Ok(q) => q,
         Err(e) => {
             return Err(Error::new(
                 ErrorKind::Other,
-                format!("Unable to create search query {}", e),
+                format!(
+                    "Unable to create search query for {:?} test search index -> {}",
+                    index_path, e
+                ),
             ));
         }
     };
+    // TODO(gitbuda): Replace hardcoded limit 10 inside the search function.
     let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(10)) {
         Ok(docs) => docs,
-        Err(_e) => {
-            return Err(Error::new(ErrorKind::Other, "Unable to perform search"));
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to perform text search under {:?} -> {}",
+                    index_path, e
+                ),
+            ));
         }
     };
     let mut docs: Vec<ffi::DocumentOutput> = vec![];
     for (_score, doc_address) in top_docs {
         let doc = match reader.searcher().doc(doc_address) {
             Ok(d) => d,
-            Err(_) => {
-                panic!("Unable to find document returned by the search query.");
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!(
+                        "Unable to find document inside {:?} text search index) -> {}",
+                        index_path, e
+                    ),
+                ));
             }
         };
-        // let metadata = doc.get_first(metadata_field).unwrap().as_json().unwrap();
-        let data = doc.get_first(data_field).unwrap().as_json().unwrap();
-        // let data = schema.to_json(&doc);
+        let mut data: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+        for (name, field) in &return_fields {
+            data.insert(
+                name.to_string(),
+                serde_json::to_value(doc.get_first(*field).unwrap().as_json().unwrap()).unwrap(),
+            );
+        }
         docs.push(ffi::DocumentOutput {
             data: match to_string(&data) {
                 Ok(s) => s,
-                Err(_e) => {
-                    panic!("stored data not JSON");
-                }
-            },
-        });
-    }
-    Ok(ffi::SearchOutput { docs })
-}
-
-fn find(
-    context: &mut ffi::Context,
-    input: &ffi::SearchInput,
-) -> Result<ffi::SearchOutput, std::io::Error> {
-    let index = &context.tantivyContext.index;
-    let schema = &context.tantivyContext.schema;
-    let reader = match index
-        .reader_builder()
-        .reload_policy(ReloadPolicy::OnCommit)
-        .try_into()
-    {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to read (reader init failed): {}", e),
-            ));
-        }
-    };
-    let gid_field = schema.get_field("gid").unwrap();
-    let data_field = schema.get_field("data").unwrap();
-    let query_parser = QueryParser::for_index(index, vec![gid_field]);
-    let query = match query_parser.parse_query(&input.search_query) {
-        Ok(q) => q,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to create search query {}", e),
-            ));
-        }
-    };
-    let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(10)) {
-        Ok(docs) => docs,
-        Err(_e) => {
-            return Err(Error::new(ErrorKind::Other, "Unable to perform search"));
-        }
-    };
-    let mut docs: Vec<ffi::DocumentOutput> = vec![];
-    for (_score, doc_address) in top_docs {
-        let doc = match reader.searcher().doc(doc_address) {
-            Ok(d) => d,
-            Err(_) => {
-                panic!("Unable to find document returned by the search query.");
-            }
-        };
-        let data = doc.get_first(data_field).unwrap().as_json().unwrap();
-        docs.push(ffi::DocumentOutput {
-            data: match to_string(&data) {
-                Ok(s) => s,
-                Err(_e) => {
-                    panic!("stored data not JSON");
+                Err(e) => {
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!(
+                            "Unable to serialieze {:?} text search index data into a string -> {}",
+                            index_path, e
+                        ),
+                    ));
                 }
             },
         });
@@ -515,8 +501,12 @@ fn aggregate(
             ));
         }
     };
-    let data_field = schema.get_field("data").unwrap();
-    let query_parser = QueryParser::for_index(index, vec![data_field]);
+    let search_fields: Vec<_> = input
+        .search_fields
+        .iter()
+        .map(|name| schema.get_field(&name).unwrap())
+        .collect();
+    let query_parser = QueryParser::for_index(index, search_fields);
     let query = match query_parser.parse_query(&input.search_query) {
         Ok(q) => q,
         Err(e) => {
