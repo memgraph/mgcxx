@@ -35,6 +35,7 @@ mod ffi {
     /// senamtics might be different.
     struct IndexConfig {
         mappings: String,
+        // TODO(gitbuda): Add tokenizer as an option (each field can have one).
     }
 
     struct DocumentInput {
@@ -42,24 +43,19 @@ mod ffi {
         /// Mappings inside IndexConfig defines how data will be handeled.
         data: String,
     }
-    // NOTE: The input struct is / should be aligned with the schema.
-    // NOTE: Having a specific input object under ffi is a challange for general solution.
-    // NOTE: The following are metadata fields required by Memgraph
-    //   metadata: String,
-    //   gid: u64,
-    //   txid: u64,
-    //   deleted: bool,
-    //   is_node: bool,
-    // props: String, // TODO(gitbuda): Consider using https://cxx.rs/binding/cxxstring.html
-
-    struct SearchInput {
-        search_query: String,
-        aggregation_query: String,
-        // TODO(gitbuda): Add stuff like skip & limit.
-    }
-
+    // NOTE: The input struct is/should_be aligned with the schema.
     struct DocumentOutput {
         data: String, // NOTE: Here should probably be Option but it's not supported in cxx.
+    }
+
+    struct SearchInput {
+        search_fields: Vec<String>,
+        search_query: String,
+        return_fields: Vec<String>,
+        aggregation_query: String,
+        // TODO(gitbuda): Add stuff like skip & limit.
+        // NOTE: Any primitive value here is a bit of a problem because of default value on the C++
+        // side.
     }
     struct SearchOutput {
         docs: Vec<DocumentOutput>,
@@ -69,276 +65,31 @@ mod ffi {
     // NOTE: Since return type is Result<T>, always return Result<Something>.
     extern "Rust" {
         type TantivyContext;
-        fn drop_index(name: &String) -> Result<()>;
         fn init(_log_level: &String) -> Result<()>;
         /// path is just passed into std::path::Path::new -> pass any absolute or relative path to
         /// yours process working directory
         /// config contains mappings definition, take a look under [IndexConfig]
         fn create_index(path: &String, config: &IndexConfig) -> Result<Context>;
-        fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
-        fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
-        fn find(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn add(context: &mut Context, input: &DocumentInput, skip_commit: bool) -> Result<()>;
         fn commit(context: &mut Context) -> Result<()>;
         fn rollback(context: &mut Context) -> Result<()>;
+        fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
+        fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
+        fn drop_index(path: &String) -> Result<()>;
     }
 }
 
 pub struct TantivyContext {
+    pub index_path: std::path::PathBuf,
     pub schema: Schema,
     pub index: Index,
     pub index_writer: IndexWriter,
 }
 
-fn rollback(context: &mut ffi::Context) -> Result<(), std::io::Error> {
-    let index_writer = &mut context.tantivyContext.index_writer;
-    match index_writer.rollback() {
-        Ok(_) => {
-            return Ok(());
-        }
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to rollback -> {}", e),
-            ));
-        }
-    }
-}
-
-fn commit_(index_writer: &mut IndexWriter) -> Result<(), std::io::Error> {
-    match index_writer.commit() {
-        Ok(_) => {
-            return Ok(());
-        }
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to commit -> {}", e),
-            ));
-        }
-    }
-}
-
-fn commit(context: &mut ffi::Context) -> Result<(), std::io::Error> {
-    let index_writer = &mut context.tantivyContext.index_writer;
-    commit_(index_writer)
-}
-
-fn add_document(
-    index_writer: &mut IndexWriter,
-    document: Document,
-    skip_commit: bool,
-) -> Result<(), std::io::Error> {
-    match index_writer.add_document(document) {
-        Ok(_) => {
-            if skip_commit {
-                return Ok(());
-            } else {
-                commit_(index_writer)
-            }
-        }
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to add document -> {}", e),
-            ));
-        }
-    }
-}
-
-fn add(
-    context: &mut ffi::Context,
-    input: &ffi::DocumentInput,
-    skip_commit: bool,
-) -> Result<(), std::io::Error> {
-    let schema = &context.tantivyContext.schema;
-    let index_writer = &mut context.tantivyContext.index_writer;
-    // TODO(gitbuda): schema.parse_document > TantivyDocument::parse_json (LATEST UNSTABLE)
-    let document = match schema.parse_document(&input.data) {
-        Ok(json) => json,
-        Err(e) => panic!("failed to parser metadata {}", e),
-    };
-    add_document(index_writer, document, skip_commit)
-}
-
-fn aggregate(
-    context: &mut ffi::Context,
-    input: &ffi::SearchInput,
-) -> Result<ffi::DocumentOutput, std::io::Error> {
-    let index = &context.tantivyContext.index;
-    let schema = &context.tantivyContext.schema;
-    let reader = match index
-        .reader_builder()
-        .reload_policy(ReloadPolicy::OnCommit)
-        .try_into()
-    {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to read (reader init failed): {}", e),
-            ));
-        }
-    };
-    let data_field = schema.get_field("data").unwrap();
-    let query_parser = QueryParser::for_index(index, vec![data_field]);
-    let query = match query_parser.parse_query(&input.search_query) {
-        Ok(q) => q,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to create search query {}", e),
-            ));
-        }
-    };
-    let searcher = reader.searcher();
-    let agg_req: Aggregations = serde_json::from_str(&input.aggregation_query)?;
-    let collector = AggregationCollector::from_aggs(agg_req, Default::default());
-    let agg_res: AggregationResults = searcher.search(&query, &collector).unwrap();
-    let res: Value = serde_json::to_value(agg_res)?;
-    Ok(ffi::DocumentOutput {
-        data: res.to_string(),
-    })
-}
-
-fn find(
-    context: &mut ffi::Context,
-    input: &ffi::SearchInput,
-) -> Result<ffi::SearchOutput, std::io::Error> {
-    let index = &context.tantivyContext.index;
-    let schema = &context.tantivyContext.schema;
-    let reader = match index
-        .reader_builder()
-        .reload_policy(ReloadPolicy::OnCommit)
-        .try_into()
-    {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to read (reader init failed): {}", e),
-            ));
-        }
-    };
-    let gid_field = schema.get_field("gid").unwrap();
-    let data_field = schema.get_field("data").unwrap();
-    let query_parser = QueryParser::for_index(index, vec![gid_field]);
-    let query = match query_parser.parse_query(&input.search_query) {
-        Ok(q) => q,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to create search query {}", e),
-            ));
-        }
-    };
-    let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(10)) {
-        Ok(docs) => docs,
-        Err(_e) => {
-            return Err(Error::new(ErrorKind::Other, "Unable to perform search"));
-        }
-    };
-    let mut docs: Vec<ffi::DocumentOutput> = vec![];
-    for (_score, doc_address) in top_docs {
-        let doc = match reader.searcher().doc(doc_address) {
-            Ok(d) => d,
-            Err(_) => {
-                panic!("Unable to find document returned by the search query.");
-            }
-        };
-        let data = doc.get_first(data_field).unwrap().as_json().unwrap();
-        docs.push(ffi::DocumentOutput {
-            data: match to_string(&data) {
-                Ok(s) => s,
-                Err(_e) => {
-                    panic!("stored data not JSON");
-                }
-            },
-        });
-    }
-    Ok(ffi::SearchOutput { docs })
-}
-
-fn search(
-    context: &mut ffi::Context,
-    input: &ffi::SearchInput,
-) -> Result<ffi::SearchOutput, std::io::Error> {
-    let index = &context.tantivyContext.index;
-    let schema = &context.tantivyContext.schema;
-    let reader = match index
-        .reader_builder()
-        .reload_policy(ReloadPolicy::OnCommit)
-        .try_into()
-    {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to read (reader init failed): {}", e),
-            ));
-        }
-    };
-    let metadata_field = schema.get_field("metadata").unwrap();
-    let data_field = schema.get_field("data").unwrap();
-    let query_parser = QueryParser::for_index(index, vec![metadata_field]);
-    let query = match query_parser.parse_query(&input.search_query) {
-        Ok(q) => q,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to create search query {}", e),
-            ));
-        }
-    };
-    let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(10)) {
-        Ok(docs) => docs,
-        Err(_e) => {
-            return Err(Error::new(ErrorKind::Other, "Unable to perform search"));
-        }
-    };
-    let mut docs: Vec<ffi::DocumentOutput> = vec![];
-    for (_score, doc_address) in top_docs {
-        let doc = match reader.searcher().doc(doc_address) {
-            Ok(d) => d,
-            Err(_) => {
-                panic!("Unable to find document returned by the search query.");
-            }
-        };
-        // let metadata = doc.get_first(metadata_field).unwrap().as_json().unwrap();
-        let data = doc.get_first(data_field).unwrap().as_json().unwrap();
-        // let data = schema.to_json(&doc);
-        docs.push(ffi::DocumentOutput {
-            data: match to_string(&data) {
-                Ok(s) => s,
-                Err(_e) => {
-                    panic!("stored data not JSON");
-                }
-            },
-        });
-    }
-    Ok(ffi::SearchOutput { docs })
-}
-
-fn drop_index(name: &String) -> Result<(), std::io::Error> {
-    let index_path = std::path::Path::new(name);
-    if index_path.exists() {
-        match std::fs::remove_dir_all(index_path) {
-            Ok(_) => {
-                debug!("tantivy_index removed");
-            }
-            Err(_) => {
-                // panic!("Failed to remove tantivy_index folder {}", e);
-            }
-        }
-    } else {
-        debug!("tantivy_index folder doesn't exist");
-    }
-    Ok(())
-}
-
 fn init(_log_level: &String) -> Result<(), std::io::Error> {
+    // TODO(gitbuda): Used as a library code inside a C++ application -> align logger format.
     let log_init_res = env_logger::try_init_from_env(
-        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
+        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn"),
     );
     // TODO(gitbuda): If more than one module tries to do this -> the later call might fail ->
     // in that case, this code should be adjusted (or the error should be ignored because the
@@ -352,54 +103,10 @@ fn init(_log_level: &String) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn ensure_index_dir_structure(path: &String, schema: &Schema) -> Result<Index, std::io::Error> {
-    let index_path = std::path::Path::new(path);
-    if !index_path.exists() {
-        match std::fs::create_dir(index_path) {
-            Ok(_) => {
-                debug!("{:?} folder created", index_path);
-            }
-            Err(e) => {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    format!(
-                        "Failed to create {:?} text search index folder -> {}",
-                        index_path, e
-                    ),
-                ));
-            }
-        }
-    }
-    let mmap_directory = MmapDirectory::open(&index_path).unwrap();
-    // NOTE: If schema doesn't match, open_or_create is going to return an error.
-    let index = match Index::open_or_create(mmap_directory, schema.clone()) {
-        Ok(index) => index,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!(
-                    "Unable to initialize text search index under {:?} -> {}",
-                    index_path, e
-                ),
-            ));
-        }
-    };
-    Ok(index)
-}
-
-fn create_index_writter(index: &Index) -> Result<IndexWriter, std::io::Error> {
-    let index_writer: IndexWriter = match index.writer(50_000_000) {
-        Ok(writer) => writer,
-        Err(_e) => {
-            // TODO(gitbuda): This message won't be intuitive to the user -> rewrite.
-            return Err(Error::new(ErrorKind::Other, "Unable to initialize writer"));
-        }
-    };
-    Ok(index_writer)
-}
-
 // TODO(gitbuda): Implement full range of extract_schema options.
-fn extract_schema(mappings: &serde_json::Map<String, Value>) -> Result<Schema, std::io::Error> {
+fn create_index_schema(
+    mappings: &serde_json::Map<String, Value>,
+) -> Result<Schema, std::io::Error> {
     let mut schema_builder = Schema::builder();
     if let Some(properties) = mappings.get("properties") {
         if let Some(properties_map) = properties.as_object() {
@@ -540,24 +247,366 @@ fn extract_schema(mappings: &serde_json::Map<String, Value>) -> Result<Schema, s
     Ok(schema)
 }
 
+fn create_index_dir_structure(
+    path: &String,
+    schema: &Schema,
+) -> Result<(Index, std::path::PathBuf), std::io::Error> {
+    let index_path = std::path::Path::new(path);
+    if !index_path.exists() {
+        match std::fs::create_dir(index_path) {
+            Ok(_) => {
+                debug!("{:?} folder created", index_path);
+            }
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!(
+                        "Failed to create {:?} text search index folder -> {}",
+                        index_path, e
+                    ),
+                ));
+            }
+        }
+    }
+    let mmap_directory = match MmapDirectory::open(&index_path) {
+        Ok(d) => d,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Failed to mmap text search index folder at {:?} -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+    // NOTE: If schema doesn't match, open_or_create is going to return an error.
+    let index = match Index::open_or_create(mmap_directory, schema.clone()) {
+        Ok(index) => index,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to initialize text search index under {:?} -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+    Ok((index, index_path.to_path_buf()))
+}
+
 fn create_index(path: &String, config: &ffi::IndexConfig) -> Result<ffi::Context, std::io::Error> {
     let mappings = match serde_json::from_str::<serde_json::Map<String, Value>>(&config.mappings) {
         Ok(r) => r,
         Err(e) => {
             return Err(Error::new(
                 ErrorKind::Other,
-                format!("Unable to parse mappings: {}", e),
+                format!("Unable to parse mappings for index at {} -> {}", path, e),
             ));
         }
     };
-    let schema = extract_schema(&mappings)?;
-    let index = ensure_index_dir_structure(path, &schema)?;
-    let index_writer = create_index_writter(&index)?;
+    let schema = create_index_schema(&mappings)?;
+    let (index, path) = create_index_dir_structure(path, &schema)?;
+    let index_writer: IndexWriter = match index.writer(50_000_000) {
+        Ok(writer) => writer,
+        Err(e) => {
+            return Err(Error::new(ErrorKind::Other, format!("Unable to initialize {:?} text search index writer -> {} This happened during the index creation. Make sure underlying machine is properly configured and try to execute create index again.", path, e)));
+        }
+    };
     Ok(ffi::Context {
         tantivyContext: Box::new(TantivyContext {
+            index_path: path,
             schema,
             index,
             index_writer,
         }),
     })
+}
+
+fn add(
+    context: &mut ffi::Context,
+    input: &ffi::DocumentInput,
+    skip_commit: bool,
+) -> Result<(), std::io::Error> {
+    let index_path = &context.tantivyContext.index_path;
+    let schema = &context.tantivyContext.schema;
+    let index_writer = &mut context.tantivyContext.index_writer;
+    // TODO(gitbuda): schema.parse_document > TantivyDocument::parse_json (LATEST UNSTABLE)
+    let document = match schema.parse_document(&input.data) {
+        Ok(json) => json,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to add document into text search index {:?} because schema doesn't match -> {} Please check mappings.",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+    match index_writer.add_document(document) {
+        Ok(_) => {
+            if skip_commit {
+                return Ok(());
+            } else {
+                commit(context)
+            }
+        }
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to add document -> {}", e),
+            ));
+        }
+    }
+}
+
+fn commit(context: &mut ffi::Context) -> Result<(), std::io::Error> {
+    let index_writer = &mut context.tantivyContext.index_writer;
+    let index_path = &context.tantivyContext.index_path;
+    match index_writer.commit() {
+        Ok(_) => {
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to commit text search index at {:?} -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    }
+}
+
+fn rollback(context: &mut ffi::Context) -> Result<(), std::io::Error> {
+    let index_writer = &mut context.tantivyContext.index_writer;
+    let index_path = &context.tantivyContext.index_path;
+    match index_writer.rollback() {
+        Ok(_) => {
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to rollback text search index at {:?} -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    }
+}
+
+fn search_get_fields(
+    fields: &Vec<String>,
+    schema: &Schema,
+    index_path: &std::path::PathBuf,
+) -> Result<Vec<Field>, std::io::Error> {
+    let mut result: Vec<Field> = Vec::new();
+    result.reserve(fields.len());
+    for name in fields {
+        match schema.get_field(name) {
+            Ok(f) => result.push(f),
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!("{} inside {:?} text seatch index", e, index_path),
+                ));
+            }
+        }
+    }
+    Ok(result)
+}
+
+fn search(
+    context: &mut ffi::Context,
+    input: &ffi::SearchInput,
+) -> Result<ffi::SearchOutput, std::io::Error> {
+    let index_path = &context.tantivyContext.index_path;
+    let index = &context.tantivyContext.index;
+    let schema = &context.tantivyContext.schema;
+    let reader = match index
+        .reader_builder()
+        .reload_policy(ReloadPolicy::OnCommit)
+        .try_into()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to read (reader for {:?} text search index failed) -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+    let search_fields = search_get_fields(&input.search_fields, schema, index_path)?;
+    let return_fields = search_get_fields(&input.return_fields, schema, index_path)?;
+    let query_parser = QueryParser::for_index(index, search_fields);
+    let query = match query_parser.parse_query(&input.search_query) {
+        Ok(q) => q,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to create search query for {:?} test search index -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+    // TODO(gitbuda): Replace hardcoded limit 10 inside the search function.
+    let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(10)) {
+        Ok(docs) => docs,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to perform text search under {:?} -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+    let mut docs: Vec<ffi::DocumentOutput> = vec![];
+    for (_score, doc_address) in top_docs {
+        let doc = match reader.searcher().doc(doc_address) {
+            Ok(d) => d,
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!(
+                        "Unable to find document inside {:?} text search index) -> {}",
+                        index_path, e
+                    ),
+                ));
+            }
+        };
+        let mut data: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+        for (name, field) in input.return_fields.iter().zip(return_fields.iter()) {
+            let field_data = match doc.get_first(*field) {
+                Some(f) => f,
+                None => continue,
+            };
+            // TODO(gitbuda): Shouldn't not just be JSON -> deduce from mappings!
+            let field_as_tantivy_json = match field_data.as_json() {
+                Some(f) => f,
+                None => {
+                    // TODO(gitbuda): Is error here the best?
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!("Unable to convert field data to json"),
+                    ));
+                }
+            };
+            let field_as_json = match serde_json::to_value(field_as_tantivy_json) {
+                Ok(f) => f,
+                Err(_) => {
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!("Unable to convert field data to json"),
+                    ));
+                }
+            };
+            data.insert(name.to_string(), field_as_json);
+        }
+        docs.push(ffi::DocumentOutput {
+            data: match to_string(&data) {
+                Ok(s) => s,
+                Err(e) => {
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!(
+                            "Unable to serialieze {:?} text search index data into a string -> {}",
+                            index_path, e
+                        ),
+                    ));
+                }
+            },
+        });
+    }
+    Ok(ffi::SearchOutput { docs })
+}
+
+fn aggregate(
+    context: &mut ffi::Context,
+    input: &ffi::SearchInput,
+) -> Result<ffi::DocumentOutput, std::io::Error> {
+    let index_path = &context.tantivyContext.index_path;
+    let index = &context.tantivyContext.index;
+    let schema = &context.tantivyContext.schema;
+    let reader = match index
+        .reader_builder()
+        .reload_policy(ReloadPolicy::OnCommit)
+        .try_into()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to read (reader init failed): {}", e),
+            ));
+        }
+    };
+    let search_fields = search_get_fields(&input.search_fields, schema, index_path)?;
+    let query_parser = QueryParser::for_index(index, search_fields);
+    let query = match query_parser.parse_query(&input.search_query) {
+        Ok(q) => q,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to create search query {}", e),
+            ));
+        }
+    };
+    let searcher = reader.searcher();
+    let agg_req: Aggregations = serde_json::from_str(&input.aggregation_query)?;
+    let collector = AggregationCollector::from_aggs(agg_req, Default::default());
+    let agg_res: AggregationResults = match searcher.search(&query, &collector) {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Failed to gather aggregation results for {:?} text search index -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+    let res: Value = serde_json::to_value(agg_res)?;
+    Ok(ffi::DocumentOutput {
+        data: res.to_string(),
+    })
+}
+
+/// Removes underlying data on disk.
+/// NOTE: Before executing this information, make sure no code is actively using the underlying
+/// index.
+///
+fn drop_index(path: &String) -> Result<(), std::io::Error> {
+    let index_path = std::path::Path::new(path);
+    if index_path.exists() {
+        match std::fs::remove_dir_all(index_path) {
+            Ok(_) => {
+                debug!("Text search index at {:?} removed", index_path);
+            }
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!(
+                        "Failed to remove underlying text search index folder -> {}",
+                        e
+                    ),
+                ));
+            }
+        }
+    } else {
+        debug!("Index at {:?} does NOT exist", index_path);
+    }
+    Ok(())
 }

@@ -1,11 +1,17 @@
-# cxxtantivy
+# mgcxx (experimental)
 
-## Work in Progress
+A collection of C++ wrappers around Rust libraries.
+The list includes:
+  * full-text search enabled by [tantivy](https://github.com/quickwit-oss/tantivy)
+
+## text_search
 
 ### TODOs
 
-- [ ] Figure out the right API ⏳
-  - [ ] All READ methods (`search`, `aggregate`, `find`) depend on the exact schema -> make it robust
+- [ ] Implement full API
+    - [ ] delete
+    - [ ] update
+- [ ] Polish & test all error messages
 - [ ] Write unit / integration test to compare STRING vs JSON fiels search query syntax.
 - [ ] Figure out what's the right search syntax for a property graph
 - [ ] Add some notion of pagination
@@ -29,14 +35,21 @@
         - [ ] Note [DocAddress](https://docs.rs/tantivy/latest/tantivy/struct.DocAddress.html) is composed of 2 u32 but the `SegmentOrdinal` is tied to the `Searcher` -> is it possible/wise to cache the address (`SegmentId` is UUID)
             - [ ] A [searcher](https://docs.rs/tantivy/latest/tantivy/struct.IndexReader.html#method.searcher) per transaction -> cache `DocAddress` inside Memgraph's `ElementAccessors`?
 - [ ] Implement the stress test by adding & searching to the same index concurrently + large dataset generator.
+- [ ] Consider implementing panic! handler preventing outside process to crash (optionally).
 
 ### NOTEs
 
 * if a field doesn't get specified in the schema, it's ignored
-* `TEXT` means the field will be tokenized and indexed (required to be able to search)
-* Tantivy add_json_object accepts serde_json::map::Map<String, serde_json::value::Value>.
+* `TEXT` means the field will be tokenized and indexed (required to be able to
+  search)
+* Tantivy add_json_object accepts serde_json::map::Map<String, serde_json::value::Value>
+* C++ text-search API is snake case because it's implemented in Rust
+* Writing each document and then committing (writing to disk) will be
+  expensive. In a standard OLTP workload that's a common case -> introduce some
+  form of batching.
 
 ## Resources
 
 * https://fulmicoton.com/posts/behold-tantivy-part2
 * https://stackoverflow.com/questions/37924383/combining-several-static-libraries-into-one-using-cmake
+    --> decided to have 2 separate libraries user code has to link

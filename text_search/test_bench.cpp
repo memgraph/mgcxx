@@ -95,7 +95,10 @@ BENCHMARK_DEFINE_F(MyFixture1, BM_BenchLookup)(benchmark::State &state) {
   memcxx::text_search::commit(*context);
 
   memcxx::text_search::SearchInput search_input = {
-      .search_query = fmt::format("metadata.gid:{}", 0)};
+      .search_fields = {"metadata"},
+      .search_query = fmt::format("metadata.gid:{}", 0),
+      .return_fields = {"data"},
+  };
   for (auto _ : state) {
     auto result = memcxx::text_search::search(*context, search_input);
     if (result.docs.size() < 1) {
@@ -112,10 +115,13 @@ BENCHMARK_DEFINE_F(MyFixture2, BM_BenchLookup)(benchmark::State &state) {
   }
   memcxx::text_search::commit(*context);
 
-  memcxx::text_search::SearchInput search_input = {.search_query =
-                                                       fmt::format("{}", 0)};
+  memcxx::text_search::SearchInput search_input = {
+      .search_fields = {"gid"},
+      .search_query = fmt::format("{}", 0),
+      .return_fields = {"data"},
+  };
   for (auto _ : state) {
-    auto result = memcxx::text_search::find(*context, search_input);
+    auto result = memcxx::text_search::search(*context, search_input);
     if (result.docs.size() < 1) {
       std::exit(1);
     }
