@@ -71,6 +71,7 @@ mod ffi {
         /// config contains mappings definition, take a look under [IndexConfig]
         fn create_index(path: &String, config: &IndexConfig) -> Result<Context>;
         fn add(context: &mut Context, input: &DocumentInput, skip_commit: bool) -> Result<()>;
+        fn delete(context: &mut Context, input: &SearchInput, skip_commit: bool) -> Result<()>;
         fn commit(context: &mut Context) -> Result<()>;
         fn rollback(context: &mut Context) -> Result<()>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
@@ -360,6 +361,17 @@ fn add(
             ));
         }
     }
+}
+
+fn delete(
+    context: &mut ffi::Context,
+    input: &ffi::SearchInput,
+    skip_commit: bool,
+) -> Result<(), std::io::Error> {
+    let index_path = &context.tantivyContext.index_path;
+    let schema = &context.tantivyContext.schema;
+    let index_writer = &mut context.tantivyContext.index_writer;
+    return Err(Error::new(ErrorKind::Other, format!("Not yet implemented")));
 }
 
 fn commit(context: &mut ffi::Context) -> Result<(), std::io::Error> {
