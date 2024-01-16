@@ -71,7 +71,7 @@ mod ffi {
         /// config contains mappings definition, take a look under [IndexConfig]
         fn create_index(path: &String, config: &IndexConfig) -> Result<Context>;
         fn add(context: &mut Context, input: &DocumentInput, skip_commit: bool) -> Result<()>;
-        fn delete(context: &mut Context, input: &SearchInput, skip_commit: bool) -> Result<()>;
+        fn delete_document(context: &mut Context, input: &SearchInput, skip_commit: bool) -> Result<()>;
         fn commit(context: &mut Context) -> Result<()>;
         fn rollback(context: &mut Context) -> Result<()>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
@@ -363,7 +363,7 @@ fn add(
     }
 }
 
-fn delete(
+fn delete_document(
     context: &mut ffi::Context,
     input: &ffi::SearchInput,
     skip_commit: bool,
