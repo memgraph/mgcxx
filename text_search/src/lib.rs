@@ -71,7 +71,11 @@ mod ffi {
         /// config contains mappings definition, take a look under [IndexConfig]
         fn create_index(path: &String, config: &IndexConfig) -> Result<Context>;
         fn add(context: &mut Context, input: &DocumentInput, skip_commit: bool) -> Result<()>;
-        fn delete_document(context: &mut Context, input: &SearchInput, skip_commit: bool) -> Result<()>;
+        fn delete_document(
+            context: &mut Context,
+            input: &SearchInput,
+            skip_commit: bool,
+        ) -> Result<()>;
         fn commit(context: &mut Context) -> Result<()>;
         fn rollback(context: &mut Context) -> Result<()>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
@@ -368,10 +372,45 @@ fn delete_document(
     input: &ffi::SearchInput,
     skip_commit: bool,
 ) -> Result<(), std::io::Error> {
-    let index_path = &context.tantivyContext.index_path;
-    let schema = &context.tantivyContext.schema;
     let index_writer = &mut context.tantivyContext.index_writer;
-    return Err(Error::new(ErrorKind::Other, format!("Not yet implemented")));
+    let index_path = &context.tantivyContext.index_path;
+    let index = &context.tantivyContext.index;
+    let schema = &context.tantivyContext.schema;
+    let search_fields = search_get_fields(&input.search_fields, schema, index_path)?;
+    let query_parser = QueryParser::for_index(index, search_fields);
+    let query = match query_parser.parse_query(&input.search_query) {
+        Ok(q) => q,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to create search query for {:?} test search index -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+
+    match index_writer.delete_query(query) {
+        Ok(_) => {
+            if skip_commit {
+                return Ok(());
+            } else {
+                commit(context)
+            }
+        }
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to commit text search index at {:?} -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    }
+
+    // return Err(Error::new(ErrorKind::Other, format!("Not yet implemented")));
 }
 
 fn commit(context: &mut ffi::Context) -> Result<(), std::io::Error> {
