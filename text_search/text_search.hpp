@@ -6,4 +6,4 @@
 // USAGE NOTE:
 //   * Error returned from cxx calls are transformed into ::rust::Error
 //     exception (that's by [cxx](https://cxx.rs/) design).
-//   * All other text search functionality if located under ::memcxx::text_search namespace.
+//   * All other text search functionality if located under ::mgcxx::text_search namespace.
