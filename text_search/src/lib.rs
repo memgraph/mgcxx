@@ -70,7 +70,7 @@ mod ffi {
         /// yours process working directory
         /// config contains mappings definition, take a look under [IndexConfig]
         fn create_index(path: &String, config: &IndexConfig) -> Result<Context>;
-        fn add(context: &mut Context, input: &DocumentInput, skip_commit: bool) -> Result<()>;
+        fn add_document(context: &mut Context, input: &DocumentInput, skip_commit: bool) -> Result<()>;
         fn delete_document(
             context: &mut Context,
             input: &SearchInput,
@@ -329,7 +329,7 @@ fn create_index(path: &String, config: &ffi::IndexConfig) -> Result<ffi::Context
     })
 }
 
-fn add(
+fn add_document(
     context: &mut ffi::Context,
     input: &ffi::DocumentInput,
     skip_commit: bool,

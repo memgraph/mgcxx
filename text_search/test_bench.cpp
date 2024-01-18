@@ -67,7 +67,7 @@ BENCHMARK_DEFINE_F(MyFixture1, BM_AddSimpleEagerCommit)
 
   for (auto _ : state) {
     for (const auto &doc : generated_data) {
-      memcxx::text_search::add(*context, doc, false);
+      memcxx::text_search::add_document(*context, doc, false);
     }
   }
 }
@@ -80,7 +80,7 @@ BENCHMARK_DEFINE_F(MyFixture1, BM_AddSimpleLazyCommit)
 
   for (auto _ : state) {
     for (const auto &doc : generated_data) {
-      memcxx::text_search::add(*context, doc, true);
+      memcxx::text_search::add_document(*context, doc, true);
     }
   }
   memcxx::text_search::commit(*context);
@@ -90,7 +90,7 @@ BENCHMARK_DEFINE_F(MyFixture1, BM_BenchLookup)(benchmark::State &state) {
   auto repeat_no = state.range(0);
   auto generated_data = dummy_data1(repeat_no, 5);
   for (const auto &doc : generated_data) {
-    memcxx::text_search::add(*context, doc, true);
+    memcxx::text_search::add_document(*context, doc, true);
   }
   memcxx::text_search::commit(*context);
 
@@ -111,7 +111,7 @@ BENCHMARK_DEFINE_F(MyFixture2, BM_BenchLookup)(benchmark::State &state) {
   auto repeat_no = state.range(0);
   auto generated_data = dummy_data2(repeat_no, 5);
   for (const auto &doc : generated_data) {
-    memcxx::text_search::add(*context, doc, true);
+    memcxx::text_search::add_document(*context, doc, true);
   }
   memcxx::text_search::commit(*context);
 

@@ -13,7 +13,7 @@ TEST(text_search_test_case, simple_test1) {
     for (const auto &doc : dummy_data1(5, 5)) {
       std::cout << doc.data << std::endl;
       measure_time_diff<int>("add", [&]() {
-        memcxx::text_search::add(context, doc, false);
+        memcxx::text_search::add_document(context, doc, false);
         return 0;
       });
     }
@@ -63,7 +63,7 @@ TEST(text_search_test_case, simple_test2) {
 
     for (const auto &doc : dummy_data2(2, 1)) {
       measure_time_diff<int>("add", [&]() {
-        memcxx::text_search::add(context, doc, false);
+        memcxx::text_search::add_document(context, doc, false);
         return 0;
       });
     }
