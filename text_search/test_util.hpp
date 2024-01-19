@@ -19,9 +19,9 @@ nlohmann::json dummy_mappings1() {
       {"type", "json"}, {"fast", true}, {"stored", true}, {"text", true}};
   return mappings;
 }
-std::vector<memcxx::text_search::DocumentInput>
+std::vector<mgcxx::text_search::DocumentInput>
 dummy_data1(uint64_t docs_no = 1, uint64_t props_no = 1) {
-  std::vector<memcxx::text_search::DocumentInput> docs;
+  std::vector<mgcxx::text_search::DocumentInput> docs;
   for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
     nlohmann::json data = {};
     nlohmann::json props = {};
@@ -35,7 +35,7 @@ dummy_data1(uint64_t docs_no = 1, uint64_t props_no = 1) {
     data["metadata"]["txid"] = doc_index;
     data["metadata"]["deleted"] = false;
     data["metadata"]["is_node"] = false;
-    memcxx::text_search::DocumentInput doc = {
+    mgcxx::text_search::DocumentInput doc = {
         .data = data.dump(),
     };
     docs.push_back(doc);
@@ -52,9 +52,9 @@ nlohmann::json dummy_mappings2() {
       {"type", "json"}, {"fast", true}, {"stored", true}, {"text", true}};
   return mappings;
 }
-std::vector<memcxx::text_search::DocumentInput>
+std::vector<mgcxx::text_search::DocumentInput>
 dummy_data2(uint64_t docs_no = 1, uint64_t props_no = 1) {
-  std::vector<memcxx::text_search::DocumentInput> docs;
+  std::vector<mgcxx::text_search::DocumentInput> docs;
   for (uint64_t doc_index = 0; doc_index < docs_no; ++doc_index) {
     nlohmann::json data = {};
     data["gid"] = doc_index;
@@ -64,7 +64,7 @@ dummy_data2(uint64_t docs_no = 1, uint64_t props_no = 1) {
           fmt::format("value{} is AWESOME", prop_index);
     }
     data["data"] = props;
-    memcxx::text_search::DocumentInput doc = {
+    mgcxx::text_search::DocumentInput doc = {
         .data = data.dump(),
     };
     docs.push_back(doc);
@@ -73,7 +73,7 @@ dummy_data2(uint64_t docs_no = 1, uint64_t props_no = 1) {
 }
 
 std::ostream &operator<<(std::ostream &os,
-                         const memcxx::text_search::DocumentOutput &element) {
+                         const mgcxx::text_search::DocumentOutput &element) {
   os << element.data;
   return os;
 }
