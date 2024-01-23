@@ -517,7 +517,7 @@ fn search(
 
     let top_docs = match reader
         .searcher()
-        .search(&query, &TopDocs::with_limit(usize::MAX))
+        .search(&query, &TopDocs::with_limit(1000))
     {
         Ok(docs) => docs,
         Err(e) => {
