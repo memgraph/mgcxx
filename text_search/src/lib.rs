@@ -70,7 +70,11 @@ mod ffi {
         /// yours process working directory
         /// config contains mappings definition, take a look under [IndexConfig]
         fn create_index(path: &String, config: &IndexConfig) -> Result<Context>;
-        fn add_document(context: &mut Context, input: &DocumentInput, skip_commit: bool) -> Result<()>;
+        fn add_document(
+            context: &mut Context,
+            input: &DocumentInput,
+            skip_commit: bool,
+        ) -> Result<()>;
         fn delete_document(
             context: &mut Context,
             input: &SearchInput,
@@ -510,8 +514,11 @@ fn search(
             ));
         }
     };
-    // TODO(gitbuda): Replace hardcoded limit 10 inside the search function.
-    let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(10)) {
+
+    let top_docs = match reader
+        .searcher()
+        .search(&query, &TopDocs::with_limit(1000))
+    {
         Ok(docs) => docs,
         Err(e) => {
             return Err(Error::new(
