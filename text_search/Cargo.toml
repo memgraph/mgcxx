@@ -14,6 +14,7 @@ ahash = "=0.8.5"
 [dependencies.tantivy]
 tantivy = "0.21.1"
 default-features = false
+features = ["mmap"]
 
 [build-dependencies]
 cxx-build = "1.0"
