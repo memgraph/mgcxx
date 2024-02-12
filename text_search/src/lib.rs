@@ -6,7 +6,7 @@ use tantivy::aggregation::agg_result::AggregationResults;
 use tantivy::aggregation::AggregationCollector;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
-use tantivy::query::QueryParser;
+use tantivy::query::{QueryParser, RegexQuery};
 use tantivy::schema::*;
 use tantivy::{Index, IndexWriter, ReloadPolicy};
 
@@ -83,6 +83,7 @@ mod ffi {
         fn commit(context: &mut Context) -> Result<()>;
         fn rollback(context: &mut Context) -> Result<()>;
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
+        fn regex_search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
         fn drop_index(path: &String) -> Result<()>;
     }
@@ -388,7 +389,7 @@ fn delete_document(
             return Err(Error::new(
                 ErrorKind::Other,
                 format!(
-                    "Unable to create search query for {:?} test search index -> {}",
+                    "Unable to create search query for {:?} text search index -> {}",
                     index_path, e
                 ),
             ));
@@ -468,12 +469,32 @@ fn search_get_fields(
             Err(e) => {
                 return Err(Error::new(
                     ErrorKind::Other,
-                    format!("{} inside {:?} text seatch index", e, index_path),
+                    format!("{} inside {:?} text search index", e, index_path),
                 ));
             }
         }
     }
     Ok(result)
+}
+
+fn search_get_field(
+    field: &String,
+    schema: &Schema,
+    index_path: &std::path::PathBuf,
+) -> Result<Field, std::io::Error> {
+    let mut result: Vec<Field> = Vec::new();
+    result.reserve(1);
+
+    match schema.get_field(field) {
+        Ok(f) => result.push(f),
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("{} inside {:?} text search index", e, index_path),
+            ));
+        }
+    }
+    Ok(result[0])
 }
 
 fn search(
@@ -508,17 +529,14 @@ fn search(
             return Err(Error::new(
                 ErrorKind::Other,
                 format!(
-                    "Unable to create search query for {:?} test search index -> {}",
+                    "Unable to create search query for {:?} text search index -> {}",
                     index_path, e
                 ),
             ));
         }
     };
 
-    let top_docs = match reader
-        .searcher()
-        .search(&query, &TopDocs::with_limit(1000))
-    {
+    let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(1000)) {
         Ok(docs) => docs,
         Err(e) => {
             return Err(Error::new(
@@ -579,7 +597,118 @@ fn search(
                     return Err(Error::new(
                         ErrorKind::Other,
                         format!(
-                            "Unable to serialieze {:?} text search index data into a string -> {}",
+                            "Unable to serialize {:?} text search index data into a string -> {}",
+                            index_path, e
+                        ),
+                    ));
+                }
+            },
+        });
+    }
+    Ok(ffi::SearchOutput { docs })
+}
+
+fn regex_search(
+    context: &mut ffi::Context,
+    input: &ffi::SearchInput,
+) -> Result<ffi::SearchOutput, std::io::Error> {
+    let index_path = &context.tantivyContext.index_path;
+    let index = &context.tantivyContext.index;
+    let schema = &context.tantivyContext.schema;
+    let reader = match index
+        .reader_builder()
+        .reload_policy(ReloadPolicy::OnCommit)
+        .try_into()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to read (reader for {:?} text search index failed) -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+    let search_field = search_get_field(&input.search_fields[0], schema, index_path)?;
+    let return_fields = search_get_fields(&input.return_fields, schema, index_path)?;
+
+    let query = match RegexQuery::from_pattern(&input.search_query, search_field) {
+        Ok(q) => q,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to create regex search query for {:?} text search index -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+
+    let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(1000)) {
+        Ok(docs) => docs,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Unable to perform text search under {:?} -> {}",
+                    index_path, e
+                ),
+            ));
+        }
+    };
+    let mut docs: Vec<ffi::DocumentOutput> = vec![];
+    for (_score, doc_address) in top_docs {
+        let doc = match reader.searcher().doc(doc_address) {
+            Ok(d) => d,
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!(
+                        "Unable to find document inside {:?} text search index) -> {}",
+                        index_path, e
+                    ),
+                ));
+            }
+        };
+        let mut data: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+        for (name, field) in input.return_fields.iter().zip(return_fields.iter()) {
+            let field_data = match doc.get_first(*field) {
+                Some(f) => f,
+                None => continue,
+            };
+            // TODO(gitbuda): Shouldn't not just be JSON -> deduce from mappings!
+            let field_as_tantivy_json = match field_data.as_json() {
+                Some(f) => f,
+                None => {
+                    // TODO(gitbuda): Is error here the best?
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!("Unable to convert field data to json"),
+                    ));
+                }
+            };
+            let field_as_json = match serde_json::to_value(field_as_tantivy_json) {
+                Ok(f) => f,
+                Err(_) => {
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!("Unable to convert field data to json"),
+                    ));
+                }
+            };
+            data.insert(name.to_string(), field_as_json);
+        }
+        docs.push(ffi::DocumentOutput {
+            data: match to_string(&data) {
+                Ok(s) => s,
+                Err(e) => {
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!(
+                            "Unable to serialize {:?} text search index data into a string -> {}",
                             index_path, e
                         ),
                     ));
