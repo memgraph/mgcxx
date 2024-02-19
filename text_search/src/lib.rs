@@ -631,7 +631,7 @@ fn regex_search(
             ));
         }
     };
-    let search_field = search_get_field(&input.search_fields[0], schema, index_path)?;
+    let search_field = search_get_fields(&input.search_fields, schema, index_path)?[0];
     let return_fields = search_get_fields(&input.return_fields, schema, index_path)?;
 
     let query = match RegexQuery::from_pattern(&input.search_query, search_field) {
