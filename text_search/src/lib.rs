@@ -263,7 +263,7 @@ fn create_index_dir_structure(
 ) -> Result<(Index, std::path::PathBuf), std::io::Error> {
     let index_path = std::path::Path::new(path);
     if !index_path.exists() {
-        match std::fs::create_dir(index_path) {
+        match std::fs::create_dir_all(index_path) {
             Ok(_) => {
                 debug!("{:?} folder created", index_path);
             }
