@@ -477,26 +477,6 @@ fn search_get_fields(
     Ok(result)
 }
 
-fn search_get_field(
-    field: &String,
-    schema: &Schema,
-    index_path: &std::path::PathBuf,
-) -> Result<Field, std::io::Error> {
-    let mut result: Vec<Field> = Vec::new();
-    result.reserve(1);
-
-    match schema.get_field(field) {
-        Ok(f) => result.push(f),
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("{} inside {:?} text search index", e, index_path),
-            ));
-        }
-    }
-    Ok(result[0])
-}
-
 fn search(
     context: &mut ffi::Context,
     input: &ffi::SearchInput,
