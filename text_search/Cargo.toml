@@ -8,8 +8,10 @@ cxx = "1.0.111"
 log = "0.4.17"
 env_logger = "0.10.0"
 serde_json = "1.0.79"
-# TODO(gitbuda): ahash fixed -> v0.8.7 does NOT compile -> remove below line.
+# TODO(gitbuda): ahash v0.8.7 does NOT compile -> improve setup.
 ahash = "=0.8.5"
+# TODO(gitbuda): zstd-sys 2.0.10+zstd.1.5.6 does NOT compile -> improve setup.
+zstd-sys = "=2.0.9+zstd.1.5.5"
 
 [dependencies.tantivy]
 tantivy = "0.21.1"
