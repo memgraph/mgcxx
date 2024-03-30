@@ -100,18 +100,19 @@ TEST(text_search_test_case, mappings) {
     auto context = mgcxx::text_search::create_index(
         index_name,
         mgcxx::text_search::IndexConfig{.mappings = mappings.dump()});
+
     // NOTE: This test just verifies the code can be called, add deeper test
     // when improving extract_schema.
     // TODO(gitbuda): Implement full range of extract_schema options.
     mgcxx::text_search::SearchInput search_input = {
-        .search_fields = {"prop1000"},
+        .search_fields = {"prop1"},
         .search_query = "bla",
         .return_fields = {"data"}};
     mgcxx::text_search::search(context, search_input);
   } catch (const ::rust::Error &error) {
     std::cout << error.what() << std::endl;
-    EXPECT_STREQ(error.what(), "The field does not exist: 'prop1000' inside "
-                               "\"tantivy_index_mappings\" text seatch index");
+    EXPECT_STREQ(error.what(), "The field does not exist: 'data' inside "
+                               "\"tantivy_index_mappings\" text search index");
   }
 }
 
