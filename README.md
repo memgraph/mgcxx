@@ -4,6 +4,13 @@ A collection of C++ wrappers around Rust libraries.
 The list includes:
   * full-text search enabled by [tantivy](https://github.com/quickwit-oss/tantivy)
 
+## How to build and test?
+
+```
+mkdir build && cd build
+cmake ..
+```
+
 ## text_search
 
 ### TODOs

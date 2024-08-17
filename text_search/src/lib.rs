@@ -342,8 +342,7 @@ fn add_document(
     let index_path = &context.tantivyContext.index_path;
     let schema = &context.tantivyContext.schema;
     let index_writer = &mut context.tantivyContext.index_writer;
-    // TODO(gitbuda): schema.parse_document > TantivyDocument::parse_json (LATEST UNSTABLE)
-    let document = match schema.parse_document(&input.data) {
+    let document = match TantivyDocument::parse_json(&schema, &input.data) {
         Ok(json) => json,
         Err(e) => {
             return Err(Error::new(
@@ -486,7 +485,8 @@ fn search(
     let schema = &context.tantivyContext.schema;
     let reader = match index
         .reader_builder()
-        .reload_policy(ReloadPolicy::OnCommit)
+        // https://github.com/quickwit-oss/tantivy/pull/2235
+        .reload_policy(ReloadPolicy::OnCommitWithDelay)
         .try_into()
     {
         Ok(r) => r,
@@ -528,9 +528,10 @@ fn search(
             ));
         }
     };
+
     let mut docs: Vec<ffi::DocumentOutput> = vec![];
     for (_score, doc_address) in top_docs {
-        let doc = match reader.searcher().doc(doc_address) {
+        let doc: TantivyDocument = match reader.searcher().doc(doc_address) {
             Ok(d) => d,
             Err(e) => {
                 return Err(Error::new(
@@ -549,9 +550,9 @@ fn search(
                 None => continue,
             };
             // TODO(gitbuda): Shouldn't not just be JSON -> deduce from mappings!
-            let field_as_tantivy_json = match field_data.as_json() {
-                Some(f) => f,
-                None => {
+            let field_as_tantivy_json = match field_data {
+                OwnedValue::Object(f) => f,
+                _ => {
                     // TODO(gitbuda): Is error here the best?
                     return Err(Error::new(
                         ErrorKind::Other,
@@ -570,6 +571,7 @@ fn search(
             };
             data.insert(name.to_string(), field_as_json);
         }
+
         docs.push(ffi::DocumentOutput {
             data: match to_string(&data) {
                 Ok(s) => s,
@@ -597,7 +599,8 @@ fn regex_search(
     let schema = &context.tantivyContext.schema;
     let reader = match index
         .reader_builder()
-        .reload_policy(ReloadPolicy::OnCommit)
+        // https://github.com/quickwit-oss/tantivy/pull/2235
+        .reload_policy(ReloadPolicy::OnCommitWithDelay)
         .try_into()
     {
         Ok(r) => r,
@@ -641,7 +644,7 @@ fn regex_search(
     };
     let mut docs: Vec<ffi::DocumentOutput> = vec![];
     for (_score, doc_address) in top_docs {
-        let doc = match reader.searcher().doc(doc_address) {
+        let doc: TantivyDocument = match reader.searcher().doc(doc_address) {
             Ok(d) => d,
             Err(e) => {
                 return Err(Error::new(
@@ -660,9 +663,9 @@ fn regex_search(
                 None => continue,
             };
             // TODO(gitbuda): Shouldn't not just be JSON -> deduce from mappings!
-            let field_as_tantivy_json = match field_data.as_json() {
-                Some(f) => f,
-                None => {
+            let field_as_tantivy_json = match field_data {
+                OwnedValue::Object(f) => f,
+                _ => {
                     // TODO(gitbuda): Is error here the best?
                     return Err(Error::new(
                         ErrorKind::Other,
@@ -708,7 +711,8 @@ fn aggregate(
     let schema = &context.tantivyContext.schema;
     let reader = match index
         .reader_builder()
-        .reload_policy(ReloadPolicy::OnCommit)
+        // https://github.com/quickwit-oss/tantivy/pull/2235
+        .reload_policy(ReloadPolicy::OnCommitWithDelay)
         .try_into()
     {
         Ok(r) => r,
