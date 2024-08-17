@@ -9,6 +9,7 @@ The list includes:
 ```
 mkdir build && cd build
 cmake ..
+make && ctest
 ```
 
 ## text_search
