@@ -1,8 +1,19 @@
 # mgcxx (experimental)
 
-A collection of C++ wrappers around Rust libraries.
+A collection of C++ wrappers around non-C++ libraries.
 The list includes:
   * full-text search enabled by [tantivy](https://github.com/quickwit-oss/tantivy)
+Requirements:
+  * cmake 3.15+
+  * rustup toolchain 1.75.0+
+
+## How to build and test?
+
+```
+mkdir build && cd build
+cmake ..
+make && ctest
+```
 
 ## text_search
 

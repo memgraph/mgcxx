@@ -4,11 +4,11 @@ version = "0.0.6"
 edition = "2021"
 
 [dependencies]
-cxx = "1.0.111"
-log = "0.4.17"
-env_logger = "0.10.0"
-serde_json = "1.0.79"
-tantivy = { version = "0.21.1", default-features = false, features = ["mmap"] }
+cxx = "1.0.126"
+log = "0.4.22"
+env_logger = "0.11.5"
+serde_json = "1.0.125"
+tantivy = { version = "0.22.0", default-features = false, features = ["mmap"] }
 
 [build-dependencies]
 cxx-build = "1.0"
