@@ -8,7 +8,7 @@ use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{QueryParser, RegexQuery};
 use tantivy::schema::*;
-use tantivy::{Index, IndexWriter, ReloadPolicy};
+use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy};
 
 // NOTE: Result<T> == Result<T,std::io::Error>.
 #[cxx::bridge(namespace = "mgcxx::text_search")]
@@ -85,6 +85,7 @@ mod ffi {
         fn search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn regex_search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
+        fn get_num_docs(context: &mut Context) -> Result<u64>;
         fn drop_index(path: &String) -> Result<()>;
     }
 }
@@ -94,6 +95,7 @@ pub struct TantivyContext {
     pub schema: Schema,
     pub index: Index,
     pub index_writer: IndexWriter,
+    pub index_reader: IndexReader,
 }
 
 fn init(_log_level: &String) -> Result<(), std::io::Error> {
@@ -324,12 +326,29 @@ fn create_index(path: &String, config: &ffi::IndexConfig) -> Result<ffi::Context
             return Err(Error::new(ErrorKind::Other, format!("Unable to initialize {:?} text search index writer -> {} This happened during the index creation. Make sure underlying machine is properly configured and try to execute create index again.", path, e)));
         }
     };
+    
+    // Create index reader with automatic reload policy
+    let index_reader = match index
+        .reader_builder()
+        .reload_policy(ReloadPolicy::OnCommitWithDelay)
+        .try_into()
+    {
+        Ok(reader) => reader,
+        Err(e) => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Unable to create index reader for {:?} -> {}", path, e),
+            ));
+        }
+    };
+    
     Ok(ffi::Context {
         tantivyContext: Box::new(TantivyContext {
             index_path: path,
             schema,
             index,
             index_writer,
+            index_reader,
         }),
     })
 }
@@ -483,23 +502,8 @@ fn search(
     let index_path = &context.tantivyContext.index_path;
     let index = &context.tantivyContext.index;
     let schema = &context.tantivyContext.schema;
-    let reader = match index
-        .reader_builder()
-        // https://github.com/quickwit-oss/tantivy/pull/2235
-        .reload_policy(ReloadPolicy::OnCommitWithDelay)
-        .try_into()
-    {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!(
-                    "Unable to read (reader for {:?} text search index failed) -> {}",
-                    index_path, e
-                ),
-            ));
-        }
-    };
+    let reader = &context.tantivyContext.index_reader;
+
     let search_fields = search_get_fields(&input.search_fields, schema, index_path)?;
     let return_fields = search_get_fields(&input.return_fields, schema, index_path)?;
     let query_parser = QueryParser::for_index(index, search_fields);
@@ -595,25 +599,9 @@ fn regex_search(
     input: &ffi::SearchInput,
 ) -> Result<ffi::SearchOutput, std::io::Error> {
     let index_path = &context.tantivyContext.index_path;
-    let index = &context.tantivyContext.index;
     let schema = &context.tantivyContext.schema;
-    let reader = match index
-        .reader_builder()
-        // https://github.com/quickwit-oss/tantivy/pull/2235
-        .reload_policy(ReloadPolicy::OnCommitWithDelay)
-        .try_into()
-    {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!(
-                    "Unable to read (reader for {:?} text search index failed) -> {}",
-                    index_path, e
-                ),
-            ));
-        }
-    };
+    let reader = &context.tantivyContext.index_reader;
+    
     let search_field = search_get_fields(&input.search_fields, schema, index_path)?[0];
     let return_fields = search_get_fields(&input.return_fields, schema, index_path)?;
 
@@ -709,20 +697,8 @@ fn aggregate(
     let index_path = &context.tantivyContext.index_path;
     let index = &context.tantivyContext.index;
     let schema = &context.tantivyContext.schema;
-    let reader = match index
-        .reader_builder()
-        // https://github.com/quickwit-oss/tantivy/pull/2235
-        .reload_policy(ReloadPolicy::OnCommitWithDelay)
-        .try_into()
-    {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to read (reader init failed): {}", e),
-            ));
-        }
-    };
+    let reader = &context.tantivyContext.index_reader;
+    
     let search_fields = search_get_fields(&input.search_fields, schema, index_path)?;
     let query_parser = QueryParser::for_index(index, search_fields);
     let query = match query_parser.parse_query(&input.search_query) {
@@ -753,6 +729,12 @@ fn aggregate(
     Ok(ffi::DocumentOutput {
         data: res.to_string(),
     })
+}
+
+fn get_num_docs(context: &mut ffi::Context) -> Result<u64, std::io::Error> {
+    let reader = &context.tantivyContext.index_reader;
+    let searcher = reader.searcher();
+    Ok(searcher.num_docs() as u64)
 }
 
 /// Removes underlying data on disk.
