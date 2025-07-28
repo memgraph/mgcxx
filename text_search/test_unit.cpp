@@ -18,6 +18,10 @@ TEST(text_search_test_case, simple_test1) {
       });
     }
 
+    // wait for delay to ensure all documents are indexed
+    while (mgcxx::text_search::get_num_docs(context) < 5) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
     mgcxx::text_search::SearchInput search_input = {
         .search_fields = {"metadata"},
         .search_query = "data.key1:AWESOME",
@@ -66,6 +70,10 @@ TEST(text_search_test_case, simple_test2) {
         mgcxx::text_search::add_document(context, doc, false);
         return 0;
       });
+    }
+    // wait for delay to ensure all documents are indexed
+    while (mgcxx::text_search::get_num_docs(context) < 2) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     mgcxx::text_search::SearchInput search_input = {.search_fields = {"gid"},
