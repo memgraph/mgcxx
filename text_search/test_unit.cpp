@@ -159,6 +159,13 @@ TEST(text_search_test_case, drop_index_stress_test) {
     }
     // Final commit to ensure all documents are processed
     mgcxx::text_search::commit(context); 
+
+    auto num_of_attempts = 10;
+    while (num_of_attempts > 0 && 
+           mgcxx::text_search::get_num_docs(context) < thread_count * docs_per_thread) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      num_of_attempts--;
+    }
     mgcxx::text_search::drop_index(std::move(context));
   } catch (const ::rust::Error &error) {
     FAIL() << "Stress drop test failed: " << error.what();
