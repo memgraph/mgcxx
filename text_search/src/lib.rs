@@ -1,6 +1,7 @@
 use log::debug;
 use serde_json::{to_string, Value};
 use std::io::{Error, ErrorKind};
+use std::sync::RwLock;
 use tantivy::aggregation::agg_req::Aggregations;
 use tantivy::aggregation::agg_result::AggregationResults;
 use tantivy::aggregation::AggregationCollector;
@@ -86,7 +87,7 @@ mod ffi {
         fn regex_search(context: &mut Context, input: &SearchInput) -> Result<SearchOutput>;
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
         fn get_num_docs(context: &mut Context) -> Result<u64>;
-        fn drop_index(path: &String) -> Result<()>;
+        fn drop_index(context: Context) -> Result<()>;
     }
 }
 
@@ -94,7 +95,7 @@ pub struct TantivyContext {
     pub index_path: std::path::PathBuf,
     pub schema: Schema,
     pub index: Index,
-    pub index_writer: IndexWriter,
+    pub index_writer: RwLock<IndexWriter>,
     pub index_reader: IndexReader,
 }
 
@@ -347,7 +348,7 @@ fn create_index(path: &String, config: &ffi::IndexConfig) -> Result<ffi::Context
             index_path: path,
             schema,
             index,
-            index_writer,
+            index_writer: RwLock::new(index_writer),
             index_reader,
         }),
     })
@@ -360,7 +361,6 @@ fn add_document(
 ) -> Result<(), std::io::Error> {
     let index_path = &context.tantivyContext.index_path;
     let schema = &context.tantivyContext.schema;
-    let index_writer = &mut context.tantivyContext.index_writer;
     let document = match TantivyDocument::parse_json(&schema, &input.data) {
         Ok(json) => json,
         Err(e) => {
@@ -373,19 +373,44 @@ fn add_document(
             ));
         }
     };
-    match index_writer.add_document(document) {
-        Ok(_) => {
-            if skip_commit {
-                return Ok(());
-            } else {
-                commit(context)
+
+    if skip_commit {
+        // Use shared (read) lock for just adding the document
+        let index_writer_guard = context.tantivyContext.index_writer.read().unwrap();
+        match index_writer_guard.add_document(document) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Unable to add document -> {}", e),
+                ))
             }
         }
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("Unable to add document -> {}", e),
-            ));
+    } else {
+        // Use exclusive (write) lock for add + commit
+        let mut index_writer_guard = context.tantivyContext.index_writer.write().unwrap();
+        match index_writer_guard.add_document(document) {
+            Ok(_) => {
+                // Commit while holding the write lock
+                match index_writer_guard.commit() {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        Err(Error::new(
+                            ErrorKind::Other,
+                            format!(
+                                "Unable to commit text search index at {:?} -> {}",
+                                index_path, e
+                            ),
+                        ))
+                    }
+                }
+            }
+            Err(e) => {
+                Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Unable to add document -> {}", e),
+                ))
+            }
         }
     }
 }
@@ -395,7 +420,6 @@ fn delete_document(
     input: &ffi::SearchInput,
     skip_commit: bool,
 ) -> Result<(), std::io::Error> {
-    let index_writer = &mut context.tantivyContext.index_writer;
     let index_path = &context.tantivyContext.index_path;
     let index = &context.tantivyContext.index;
     let schema = &context.tantivyContext.schema;
@@ -414,32 +438,52 @@ fn delete_document(
         }
     };
 
-    match index_writer.delete_query(query) {
-        Ok(_) => {
-            if skip_commit {
-                return Ok(());
-            } else {
-                commit(context)
+    if skip_commit {
+        // Use shared (read) lock for just deleting the document
+        let index_writer_guard = context.tantivyContext.index_writer.read().unwrap();
+        match index_writer_guard.delete_query(query) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Unable to delete document -> {}", e),
+                ))
             }
         }
-        Err(e) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!(
-                    "Unable to commit text search index at {:?} -> {}",
-                    index_path, e
-                ),
-            ));
+    } else {
+        // Use exclusive (write) lock for delete + commit
+        let mut index_writer_guard = context.tantivyContext.index_writer.write().unwrap();
+        match index_writer_guard.delete_query(query) {
+            Ok(_) => {
+                // Commit while holding the write lock
+                match index_writer_guard.commit() {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        Err(Error::new(
+                            ErrorKind::Other,
+                            format!(
+                                "Unable to commit text search index at {:?} -> {}",
+                                index_path, e
+                            ),
+                        ))
+                    }
+                }
+            }
+            Err(e) => {
+                Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Unable to delete document -> {}", e),
+                ))
+            }
         }
     }
-
-    // return Err(Error::new(ErrorKind::Other, format!("Not yet implemented")));
 }
 
 fn commit(context: &mut ffi::Context) -> Result<(), std::io::Error> {
-    let index_writer = &mut context.tantivyContext.index_writer;
     let index_path = &context.tantivyContext.index_path;
-    match index_writer.commit() {
+    // Use exclusive (write) lock for commit operations
+    let mut index_writer_guard = context.tantivyContext.index_writer.write().unwrap();
+    match index_writer_guard.commit() {
         Ok(_) => {
             return Ok(());
         }
@@ -456,9 +500,10 @@ fn commit(context: &mut ffi::Context) -> Result<(), std::io::Error> {
 }
 
 fn rollback(context: &mut ffi::Context) -> Result<(), std::io::Error> {
-    let index_writer = &mut context.tantivyContext.index_writer;
     let index_path = &context.tantivyContext.index_path;
-    match index_writer.rollback() {
+    // Use exclusive (write) lock for rollback operations
+    let mut index_writer_guard = context.tantivyContext.index_writer.write().unwrap();
+    match index_writer_guard.rollback() {
         Ok(_) => {
             return Ok(());
         }
@@ -657,7 +702,7 @@ fn regex_search(
                     // TODO(gitbuda): Is error here the best?
                     return Err(Error::new(
                         ErrorKind::Other,
-                        format!("Unable to convert field data to json"),
+                        format!("Unable to convert field data to json. Data we have: {:?}", field_data),
                     ));
                 }
             };
@@ -737,12 +782,21 @@ fn get_num_docs(context: &mut ffi::Context) -> Result<u64, std::io::Error> {
     Ok(searcher.num_docs() as u64)
 }
 
-/// Removes underlying data on disk.
-/// NOTE: Before executing this information, make sure no code is actively using the underlying
-/// index.
-///
-fn drop_index(path: &String) -> Result<(), std::io::Error> {
-    let index_path = std::path::Path::new(path);
+/// Drops the index at the given path.
+/// This will remove the entire directory and all its contents.
+/// NOTE: This function takes ownership of the context.
+fn drop_index(context: ffi::Context) -> Result<(), std::io::Error> {
+    // Extract the IndexWriter from the RwLock by taking ownership
+    let index_writer = context.tantivyContext.index_writer.into_inner().unwrap();
+
+    // Wait for all merging threads to finish before dropping the index.
+    if let Err(e) = index_writer.wait_merging_threads() {
+        return Err(Error::new(
+            ErrorKind::Other,
+            format!("Failed to wait for merging threads: {}", e),
+        ));
+    }
+    let index_path = &context.tantivyContext.index_path;
     if index_path.exists() {
         match std::fs::remove_dir_all(index_path) {
             Ok(_) => {

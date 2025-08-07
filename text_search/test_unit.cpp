@@ -1,17 +1,17 @@
 #include "gtest/gtest.h"
+#include <mutex>
+#include <thread>
 
 #include "test_util.hpp"
 
 TEST(text_search_test_case, simple_test1) {
   try {
     auto index_name = "tantivy_index_simple_test1";
-    mgcxx::text_search::drop_index(index_name);
     auto index_config =
         mgcxx::text_search::IndexConfig{.mappings = dummy_mappings1().dump()};
     auto context = mgcxx::text_search::create_index(index_name, index_config);
 
     for (const auto &doc : dummy_data1(5, 5)) {
-      std::cout << doc.data << std::endl;
       measure_time_diff<int>("add", [&]() {
         mgcxx::text_search::add_document(context, doc, false);
         return 0;
@@ -31,9 +31,6 @@ TEST(text_search_test_case, simple_test1) {
           return mgcxx::text_search::search(context, search_input);
         });
     ASSERT_EQ(result1.docs.size(), 5);
-    for (const auto &doc : result1.docs) {
-      std::cout << doc << std::endl;
-    }
     for (uint64_t i = 0; i < 10; ++i) {
       auto result = measure_time_diff<mgcxx::text_search::SearchOutput>(
           fmt::format("search{}", i),
@@ -50,17 +47,15 @@ TEST(text_search_test_case, simple_test1) {
     auto aggregation_result = nlohmann::json::parse(
         mgcxx::text_search::aggregate(context, aggregate_input).data);
     EXPECT_NEAR(aggregation_result["count"]["value"], 5, 1e-6);
-    std::cout << aggregation_result << std::endl;
+    mgcxx::text_search::drop_index(std::move(context));
   } catch (const ::rust::Error &error) {
-    std::cout << error.what() << std::endl;
-    FAIL();
+    FAIL() << "Test failed: " << error.what();  
   }
 }
 
 TEST(text_search_test_case, simple_test2) {
   try {
     auto index_name = "tantivy_index_simple_test2";
-    mgcxx::text_search::drop_index(index_name);
     auto index_config =
         mgcxx::text_search::IndexConfig{.mappings = dummy_mappings2().dump()};
     auto context = mgcxx::text_search::create_index(index_name, index_config);
@@ -82,19 +77,15 @@ TEST(text_search_test_case, simple_test2) {
                                                      .return_fields = {"data"}};
     auto result = mgcxx::text_search::search(context, search_input);
     ASSERT_EQ(result.docs.size(), 1);
-    for (const auto &doc : result.docs) {
-      std::cout << doc << std::endl;
-    }
+    mgcxx::text_search::drop_index(std::move(context));
   } catch (const ::rust::Error &error) {
-    std::cout << error.what() << std::endl;
-    FAIL();
+    FAIL() << "Test failed: " << error.what();
   }
 }
 
 TEST(text_search_test_case, mappings) {
   try {
-    auto index_name = "tantivy_index_mappings";
-    mgcxx::text_search::drop_index(index_name);
+    constexpr auto index_name = "tantivy_index_mappings";
     nlohmann::json mappings = {};
     mappings["properties"] = {};
     mappings["properties"]["prop1"] = {
@@ -117,10 +108,60 @@ TEST(text_search_test_case, mappings) {
         .search_query = "bla",
         .return_fields = {"data"}};
     mgcxx::text_search::search(context, search_input);
+    mgcxx::text_search::drop_index(std::move(context));
   } catch (const ::rust::Error &error) {
     std::cout << error.what() << std::endl;
     EXPECT_STREQ(error.what(), "The field does not exist: 'data' inside "
                                "\"tantivy_index_mappings\" text search index");
+  }
+}
+
+TEST(text_search_test_case, drop_index_stress_test) {
+  try {
+    constexpr auto index_name = "tantivy_index_stress_drop";
+    
+    nlohmann::json mappings = {};
+    mappings["properties"] = {};
+    mappings["properties"]["data"] = {
+        {"type", "text"}, {"stored", true}, {"text", true}, {"fast", true}};
+    
+    auto context = mgcxx::text_search::create_index(
+        index_name,
+        mgcxx::text_search::IndexConfig{.mappings = mappings.dump()});
+
+    // Use multiple threads to create maximum merging pressure
+    constexpr auto thread_count = 10;
+    constexpr auto docs_per_thread = 50;
+    {
+      std::vector<std::jthread> threads;
+      std::mutex mutex;
+      threads.reserve(thread_count);
+      
+      for (auto t = 0; t < thread_count; t++) {
+        threads.emplace_back([&context, &mutex, t, docs_per_thread]() {
+          for (auto i = 0; i < docs_per_thread; i++) {
+            nlohmann::json doc_data = {};
+            doc_data["data"] = "Thread " + std::to_string(t) + " document " + std::to_string(i) + 
+                              " with substantial content to create larger segments that require merging " +
+                              "when multiple threads are adding documents simultaneously creating pressure";
+            
+            mgcxx::text_search::DocumentInput doc = {
+              .data = doc_data.dump()
+            };
+            
+            std::lock_guard lock(mutex);
+            // Commit every few documents to create many small segments
+            bool skip_commit = (i % 9 != 0);
+            mgcxx::text_search::add_document(context, doc, skip_commit);
+          }
+        });
+      }
+    }
+    // Final commit to ensure all documents are processed
+    mgcxx::text_search::commit(context); 
+    mgcxx::text_search::drop_index(std::move(context));
+  } catch (const ::rust::Error &error) {
+    FAIL() << "Stress drop test failed: " << error.what();
   }
 }
 
