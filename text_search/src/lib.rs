@@ -425,7 +425,7 @@ fn delete_document(
             return Err(Error::new(
                 ErrorKind::Other,
                 format!(
-                    "Unable to commit text search index at {:?} -> {}",
+                    "Unable to delete document from text search index at {:?} -> {}",
                     index_path, e
                 ),
             ));
