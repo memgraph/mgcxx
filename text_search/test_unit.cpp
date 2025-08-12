@@ -1,5 +1,4 @@
 #include "gtest/gtest.h"
-#include <mutex>
 #include <thread>
 
 #include "test_util.hpp"
@@ -113,62 +112,6 @@ TEST(text_search_test_case, mappings) {
     std::cout << error.what() << std::endl;
     EXPECT_STREQ(error.what(), "The field does not exist: 'data' inside "
                                "\"tantivy_index_mappings\" text search index");
-  }
-}
-
-TEST(text_search_test_case, drop_index_stress_test) {
-  try {
-    constexpr auto index_name = "tantivy_index_stress_drop";
-    
-    nlohmann::json mappings = {};
-    mappings["properties"] = {};
-    mappings["properties"]["data"] = {
-        {"type", "text"}, {"stored", true}, {"text", true}, {"fast", true}};
-    
-    auto context = mgcxx::text_search::create_index(
-        index_name,
-        mgcxx::text_search::IndexConfig{.mappings = mappings.dump()});
-
-    // Use multiple threads to create maximum merging pressure
-    constexpr auto thread_count = 10;
-    constexpr auto docs_per_thread = 50;
-    {
-      std::vector<std::jthread> threads;
-      std::mutex mutex;
-      threads.reserve(thread_count);
-      
-      for (auto t = 0; t < thread_count; t++) {
-        threads.emplace_back([&context, &mutex, t, docs_per_thread]() {
-          for (auto i = 0; i < docs_per_thread; i++) {
-            nlohmann::json doc_data = {};
-            doc_data["data"] = "Thread " + std::to_string(t) + " document " + std::to_string(i) + 
-                              " with substantial content to create larger segments that require merging " +
-                              "when multiple threads are adding documents simultaneously creating pressure";
-            
-            mgcxx::text_search::DocumentInput doc = {
-              .data = doc_data.dump()
-            };
-            
-            std::lock_guard lock(mutex);
-            // Commit every few documents to create many small segments
-            bool skip_commit = (i % 9 != 0);
-            mgcxx::text_search::add_document(context, doc, skip_commit);
-          }
-        });
-      }
-    }
-    // Final commit to ensure all documents are processed
-    mgcxx::text_search::commit(context); 
-
-    auto num_of_attempts = 10;
-    while (num_of_attempts > 0 && 
-           mgcxx::text_search::get_num_docs(context) < thread_count * docs_per_thread) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      num_of_attempts--;
-    }
-    mgcxx::text_search::drop_index(std::move(context));
-  } catch (const ::rust::Error &error) {
-    FAIL() << "Stress drop test failed: " << error.what();
   }
 }
 

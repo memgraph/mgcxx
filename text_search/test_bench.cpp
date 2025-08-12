@@ -1,6 +1,5 @@
 #include <iostream>
 #include <memory>
-#include <thread>
 
 #include <benchmark/benchmark.h>
 
