@@ -327,10 +327,10 @@ fn create_index(path: &String, config: &ffi::IndexConfig) -> Result<ffi::Context
         }
     };
     
-    // Create index reader with automatic reload policy
+    // Create index reader with manual reload policy
     let index_reader = match index
         .reader_builder()
-        .reload_policy(ReloadPolicy::OnCommitWithDelay)
+        .reload_policy(ReloadPolicy::Manual)
         .try_into()
     {
         Ok(reader) => reader,
@@ -437,6 +437,16 @@ fn commit(context: &mut ffi::Context) -> Result<(), std::io::Error> {
     let index_path = &context.tantivyContext.index_path;
     match context.tantivyContext.index_writer.commit() {
         Ok(_) => {
+            // Explicitly reload the index reader to see the new changes
+            if let Err(e) = context.tantivyContext.index_reader.reload() {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!(
+                        "Unable to reload reader after commit for text search index at {:?} -> {}",
+                        index_path, e
+                    ),
+                ));
+            }
             return Ok(());
         }
         Err(e) => {
