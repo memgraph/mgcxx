@@ -1064,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "tantivy_text_search"
-version = "0.0.8"
+version = "0.0.10"
 dependencies = [
  "cxx",
  "cxx-build",
