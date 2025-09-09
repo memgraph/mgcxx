@@ -1,6 +1,5 @@
 #include "gtest/gtest.h"
 #include <thread>
-#include <chrono>
 
 #include "test_util.hpp"
 

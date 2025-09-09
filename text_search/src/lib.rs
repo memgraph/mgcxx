@@ -533,7 +533,6 @@ fn search(
         }
     };
 
-    // Reuse searcher instead of creating it multiple times
     let searcher = reader.searcher();
     let top_docs = match searcher.search(&query, &TopDocs::with_limit(input.effective_limit())) {
         Ok(docs) => docs,
@@ -548,7 +547,6 @@ fn search(
         }
     };
 
-    // Pre-allocate vector with known capacity
     let mut docs: Vec<ffi::DocumentOutput> = Vec::with_capacity(top_docs.len());
     for (score, doc_address) in top_docs {
         let doc: TantivyDocument = match searcher.doc(doc_address) {
@@ -635,7 +633,6 @@ fn regex_search(
         }
     };
 
-    // Reuse searcher instead of creating it multiple times
     let searcher = reader.searcher();
     let top_docs = match searcher.search(&query, &TopDocs::with_limit(input.effective_limit())) {
         Ok(docs) => docs,
@@ -649,7 +646,7 @@ fn regex_search(
             ));
         }
     };
-    // Pre-allocate vector with known capacity
+    
     let mut docs: Vec<ffi::DocumentOutput> = Vec::with_capacity(top_docs.len());
     for (score, doc_address) in top_docs {
         let doc: TantivyDocument = match searcher.doc(doc_address) {
