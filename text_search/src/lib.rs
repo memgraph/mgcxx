@@ -46,6 +46,7 @@ mod ffi {
     // NOTE: The input struct is/should_be aligned with the schema.
     struct DocumentOutput {
         data: String, // NOTE: Here should probably be Option but it's not supported in cxx.
+        score: f32,   // Relevance score from search
     }
 
     struct SearchInput {
@@ -53,7 +54,8 @@ mod ffi {
         search_query: String,
         return_fields: Vec<String>,
         aggregation_query: String,
-        // TODO(gitbuda): Add stuff like skip & limit.
+        limit: usize,
+        // TODO(gitbuda): Add stuff like skip.
         // NOTE: Any primitive value here is a bit of a problem because of default value on the C++
         // side.
     }
@@ -87,6 +89,12 @@ mod ffi {
         fn aggregate(context: &mut Context, input: &SearchInput) -> Result<DocumentOutput>;
         fn get_num_docs(context: &mut Context) -> Result<u64>;
         fn drop_index(context: Context) -> Result<()>;
+    }
+}
+
+impl ffi::SearchInput {
+    fn effective_limit(&self) -> usize {
+        if self.limit == 0 { 1000 } else { self.limit }
     }
 }
 
@@ -525,7 +533,8 @@ fn search(
         }
     };
 
-    let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(1000)) {
+    let searcher = reader.searcher();
+    let top_docs = match searcher.search(&query, &TopDocs::with_limit(input.effective_limit())) {
         Ok(docs) => docs,
         Err(e) => {
             return Err(Error::new(
@@ -538,9 +547,9 @@ fn search(
         }
     };
 
-    let mut docs: Vec<ffi::DocumentOutput> = vec![];
-    for (_score, doc_address) in top_docs {
-        let doc: TantivyDocument = match reader.searcher().doc(doc_address) {
+    let mut docs: Vec<ffi::DocumentOutput> = Vec::with_capacity(top_docs.len());
+    for (score, doc_address) in top_docs {
+        let doc: TantivyDocument = match searcher.doc(doc_address) {
             Ok(d) => d,
             Err(e) => {
                 return Err(Error::new(
@@ -594,6 +603,7 @@ fn search(
                     ));
                 }
             },
+            score: score,
         });
     }
     Ok(ffi::SearchOutput { docs })
@@ -623,7 +633,8 @@ fn regex_search(
         }
     };
 
-    let top_docs = match reader.searcher().search(&query, &TopDocs::with_limit(1000)) {
+    let searcher = reader.searcher();
+    let top_docs = match searcher.search(&query, &TopDocs::with_limit(input.effective_limit())) {
         Ok(docs) => docs,
         Err(e) => {
             return Err(Error::new(
@@ -635,9 +646,10 @@ fn regex_search(
             ));
         }
     };
-    let mut docs: Vec<ffi::DocumentOutput> = vec![];
-    for (_score, doc_address) in top_docs {
-        let doc: TantivyDocument = match reader.searcher().doc(doc_address) {
+    
+    let mut docs: Vec<ffi::DocumentOutput> = Vec::with_capacity(top_docs.len());
+    for (score, doc_address) in top_docs {
+        let doc: TantivyDocument = match searcher.doc(doc_address) {
             Ok(d) => d,
             Err(e) => {
                 return Err(Error::new(
@@ -690,6 +702,7 @@ fn regex_search(
                     ));
                 }
             },
+            score: score,
         });
     }
     Ok(ffi::SearchOutput { docs })
@@ -733,6 +746,7 @@ fn aggregate(
     let res: Value = serde_json::to_value(agg_res)?;
     Ok(ffi::DocumentOutput {
         data: res.to_string(),
+        score: 0.0, // Aggregation results don't have individual document scores
     })
 }
 
